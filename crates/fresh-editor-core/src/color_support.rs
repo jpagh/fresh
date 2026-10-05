@@ -424,6 +424,75 @@ pub fn painted_rgb(color: Color, capability: ColorCapability) -> Option<(u8, u8,
     }
 }
 
+/// Which end of a foreground/background pair a colour is being resolved as.
+///
+/// Only `Reset` cares: as a foreground it is the terminal's default *text*
+/// colour, as a background its default *surface*. Those are two independent
+/// choices the user made, not two names for one value, so a declared palette
+/// has to be asked in role.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaletteRole {
+    Foreground,
+    Background,
+}
+
+/// The colours the terminal actually paints, as declared by the user.
+///
+/// A named colour and `Reset` mean whatever the emulator's palette says, so
+/// [`painted_rgb`] answers `None` for them and questions about the `terminal`
+/// theme's contrast cannot be answered at all — including by Fresh's own
+/// contrast repair, which is why that theme is the one built-in theme the
+/// guarantee in [`MIN_CONTRAST_RATIO`] cannot reach. Declaring the palette
+/// here makes those questions answerable: the values below are what the
+/// terminal will paint, so a foreground that would be unreadable on its
+/// background can be repaired instead of shipped.
+///
+/// This *describes* the palette; it does not replace it. Nothing here changes
+/// what is emitted — named colours still go out as named colours and the
+/// terminal still resolves them. The declaration is consulted only to decide
+/// whether a pair needs repairing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TerminalPalette {
+    bg: (u8, u8, u8),
+    fg: (u8, u8, u8),
+    slots: [(u8, u8, u8); 16],
+}
+
+impl TerminalPalette {
+    /// Declare a palette: the default surface, the default text colour, and
+    /// the sixteen ANSI slots the named colours stand for.
+    pub fn new(bg: (u8, u8, u8), fg: (u8, u8, u8), slots: [(u8, u8, u8); 16]) -> Self {
+        Self { bg, fg, slots }
+    }
+
+    /// The RGB this palette paints for `color`, or `None` when the colour is
+    /// not the terminal's to decide.
+    ///
+    /// Covered: `Reset`, by role, and the named colours — which *are* slots
+    /// 0-15. Not covered: an absolute RGB, which is already knowable, and
+    /// indices 16 and up, which the 256-colour cube and grey ramp fix rather
+    /// than the user's palette.
+    pub fn resolve(&self, color: Color, role: PaletteRole) -> Option<(u8, u8, u8)> {
+        match color {
+            Color::Reset => Some(match role {
+                PaletteRole::Foreground => self.fg,
+                PaletteRole::Background => self.bg,
+            }),
+            Color::Rgb(..) => None,
+            Color::Indexed(idx) if idx >= 16 => None,
+            _ => color_to_palette_index(color).map(|idx| self.slots[idx as usize]),
+        }
+    }
+
+    /// The RGB the terminal paints for `color` once this declaration is taken
+    /// into account: the declared value where the colour is the terminal's,
+    /// and the usual absolute resolution otherwise.
+    pub fn painted(&self, color: Color, role: PaletteRole) -> Option<(u8, u8, u8)> {
+        self.resolve(color, role)
+            .or_else(|| painted_rgb(color, ColorCapability::TrueColor))
+    }
+}
+
 /// The foreground to paint so text stays legible on `bg`, or `None` to keep
 /// the foreground as-is.
 ///
@@ -447,6 +516,26 @@ pub fn repaired_fg(fg: Color, bg: Color) -> Option<Color> {
     }
     let fg_idx = color_to_palette_index(fg)?;
     Some(Color::Indexed(find_readable_256_color(fg_idx, bg_rgb)))
+}
+
+/// [`repaired_fg`], for a terminal whose palette the user has declared.
+///
+/// The declaration is what makes a named colour's RGB knowable in the first
+/// place, so this is the only path on which the `terminal` theme's pairs can be
+/// checked at all — `repaired_fg` answers `None` for every one of them.
+/// Returns `None` when the pair already reads, which keeps the named colour and
+/// its shorter escape sequence.
+///
+/// The repair is an absolute palette index of 16 or more, chosen against the
+/// *declared* background, so it stays correct whatever the terminal paints.
+pub fn repaired_fg_with_palette(
+    fg: Color,
+    bg: Color,
+    palette: &TerminalPalette,
+) -> Option<Color> {
+    let fg_rgb = palette.painted(fg, PaletteRole::Foreground)?;
+    let bg_rgb = palette.painted(bg, PaletteRole::Background)?;
+    find_readable_256_color_near(fg_rgb, bg_rgb).map(Color::Indexed)
 }
 
 /// Get the RGB values for a 256-color palette index
@@ -520,35 +609,50 @@ fn color_to_rgb(color: Color) -> Option<(u8, u8, u8)> {
 /// Find the nearest 256-color index that has sufficient contrast against a background.
 /// Tries to stay close to the original color's hue while meeting the contrast minimum.
 fn find_readable_256_color(fg_idx: u8, bg_rgb: (u8, u8, u8)) -> u8 {
-    let fg_rgb = idx_to_rgb(fg_idx);
+    find_readable_256_color_near(idx_to_rgb(fg_idx), bg_rgb).unwrap_or(fg_idx)
+}
+
+/// The nearest 256-color index to paint in place of `fg_rgb` so it clears
+/// `MIN_CONTRAST_RATIO` against `bg_rgb`, or `None` when it already does.
+///
+/// Takes the foreground's *painted* RGB rather than its index, because a
+/// declared terminal palette is what decides a named colour's RGB and the two
+/// must not be conflated: `DarkGray` is `#808080` on the standard palette but
+/// `#aca9a9` on Zenwritten Light, and only the latter is the 2.01:1 collision
+/// with that palette's background. Deriving the foreground from its index
+/// would let the standard palette clear the bar and report a pair as readable
+/// when it is unreadable on screen.
+///
+/// Candidates are drawn from 16 up — the colour cube and grey ramp, which the
+/// 256-colour spec fixes — never from the named slots, so a repair is never
+/// handed back to the palette that caused the collision.
+fn find_readable_256_color_near(fg_rgb: (u8, u8, u8), bg_rgb: (u8, u8, u8)) -> Option<u8> {
     let bg_lum = relative_luminance(bg_rgb.0, bg_rgb.1, bg_rgb.2);
 
-    // If contrast is already sufficient, return as-is
+    // If contrast is already sufficient, leave the foreground alone
     if contrast_ratio(fg_rgb, bg_rgb) >= MIN_CONTRAST_RATIO {
-        return fg_idx;
+        return None;
     }
 
     // Strategy: search the 256-color palette for the closest color that meets
     // the contrast threshold. "Closest" is measured as weighted RGB distance
     // from the original fg color, so we preserve hue as much as possible.
-    let mut best_idx = fg_idx;
+    //
+    // Both directions are searched. An earlier version skipped candidates on
+    // the far side of `0.5` luminance, which reads as "dark background means
+    // light text" and is right for the ends of the range — but the middle is
+    // exactly where it fails: on a mid grey at luminance ~0.32 no colour is
+    // 3:1 from it going lighter (white tops out at 2.87:1) while black clears
+    // 7:1, so the search reported "nothing qualifies" and left the pair
+    // unreadable. `min(bg, lum)` and `max(bg, lum)` below already handle the
+    // direction, so the skip was never load-bearing.
+    let mut best_idx = None;
     let mut best_distance = u32::MAX;
-
-    // Determine if we need to go lighter or darker than the background
-    let need_lighter = bg_lum < 0.5;
 
     // Search color cube (16-231) and grayscale ramp (232-255)
     for candidate in 16..=255u8 {
         let c_rgb = idx_to_rgb(candidate);
         let c_lum = PALETTE_LUMINANCE[candidate as usize];
-
-        // Skip candidates in the wrong direction (optimization)
-        if need_lighter && c_lum <= bg_lum {
-            continue;
-        }
-        if !need_lighter && c_lum >= bg_lum {
-            continue;
-        }
 
         let cr = if c_lum > bg_lum {
             (c_lum + 0.05) / (bg_lum + 0.05)
@@ -571,7 +675,7 @@ fn find_readable_256_color(fg_idx: u8, bg_rgb: (u8, u8, u8)) -> u8 {
 
         if dist < best_distance {
             best_distance = dist;
-            best_idx = candidate;
+            best_idx = Some(candidate);
         }
     }
 
@@ -988,6 +1092,186 @@ mod tests {
             cr,
             buffer.content[0].fg,
             buffer.content[0].bg
+        );
+    }
+
+    /// Zenwritten Light, the palette from the report that motivated the
+    /// declared-palette path. It is the awkward one on purpose: slot 0 *is*
+    /// the background and slot 15 a mid grey, so a theme that paints `White`
+    /// on a saturated fill collapses to roughly 1:1.
+    fn zenwritten_light() -> TerminalPalette {
+        TerminalPalette::new(
+            (0xee, 0xee, 0xee),
+            (0x35, 0x35, 0x35),
+            [
+                (0xee, 0xee, 0xee),
+                (0xa8, 0x33, 0x4c),
+                (0x4f, 0x6c, 0x31),
+                (0x94, 0x49, 0x27),
+                (0x28, 0x64, 0x86),
+                (0x88, 0x50, 0x7d),
+                (0x3b, 0x89, 0x92),
+                (0x35, 0x35, 0x35),
+                (0xac, 0xa9, 0xa9),
+                (0x94, 0x25, 0x3e),
+                (0x3f, 0x5a, 0x22),
+                (0x80, 0x3d, 0x1c),
+                (0x1d, 0x55, 0x73),
+                (0x7b, 0x3b, 0x70),
+                (0x2b, 0x74, 0x7c),
+                (0x5c, 0x5c, 0x5c),
+            ],
+        )
+    }
+
+    /// A declared palette is the only thing that makes the colours the
+    /// `terminal` theme names knowable: the two defaults resolve by role, and
+    /// the named colours resolve through the slots they stand for.
+    ///
+    /// `Reset` is the one colour whose meaning depends on the role — the
+    /// default *text* colour as a foreground, the default *surface* as a
+    /// background — which is why the palette is asked in role rather than
+    /// asked flat.
+    #[test]
+    fn declared_palette_resolves_the_defaults_by_role_and_the_slots_by_name() {
+        let palette = zenwritten_light();
+
+        assert_eq!(
+            palette.resolve(Color::Reset, PaletteRole::Background),
+            Some((0xee, 0xee, 0xee)),
+            "a Reset background is the declared default surface"
+        );
+        assert_eq!(
+            palette.resolve(Color::Reset, PaletteRole::Foreground),
+            Some((0x35, 0x35, 0x35)),
+            "a Reset foreground is the declared default text colour"
+        );
+
+        // The named colours are slots 0-15, and here that is the trap: the
+        // slot a theme reaches for as "white" is a mid grey, and the one it
+        // reaches for as "black" is the background itself.
+        assert_eq!(
+            palette.resolve(Color::White, PaletteRole::Foreground),
+            Some((0x5c, 0x5c, 0x5c))
+        );
+        assert_eq!(
+            palette.resolve(Color::Black, PaletteRole::Foreground),
+            Some((0xee, 0xee, 0xee))
+        );
+        assert_eq!(
+            palette.resolve(Color::DarkGray, PaletteRole::Foreground),
+            Some((0xac, 0xa9, 0xa9))
+        );
+    }
+
+    /// A declared palette speaks only for the colours the terminal controls.
+    /// An absolute RGB is already knowable, and a cube or grey-ramp index is
+    /// fixed by the 256-colour spec rather than by the user's palette, so
+    /// neither is the declaration's to override.
+    #[test]
+    fn declared_palette_leaves_absolute_colors_alone() {
+        let palette = zenwritten_light();
+
+        assert_eq!(
+            palette.resolve(Color::Rgb(0x12, 0x34, 0x56), PaletteRole::Foreground),
+            None,
+            "an RGB colour is absolute; the declaration does not reinterpret it"
+        );
+        assert_eq!(
+            palette.resolve(Color::Indexed(196), PaletteRole::Foreground),
+            None,
+            "the 256-colour cube is fixed by the spec, not by the palette"
+        );
+    }
+
+    /// Declaring the palette makes the pair `terminal` ships as
+    /// `syntax.comment` on `editor.bg` answerable, so it gets repaired instead
+    /// of shipped at 2.01:1.
+    ///
+    /// Without the declaration the same pair is the terminal's to decide and
+    /// is left exactly as it is — the exemption that lets the theme ship this
+    /// way in the first place, pinned here so the declared path cannot quietly
+    /// become the only path.
+    #[test]
+    fn declared_palette_repairs_a_named_foreground_colliding_with_the_default_background() {
+        let palette = zenwritten_light();
+        let fg = Color::DarkGray; // terminal.json: syntax.comment
+        let bg = Color::Reset; // terminal.json: editor.bg
+
+        assert_eq!(
+            repaired_fg(fg, bg),
+            None,
+            "no declaration, so nothing about this pair is knowable and nothing is repaired"
+        );
+
+        let repaired = repaired_fg_with_palette(fg, bg, &palette).unwrap_or_else(|| {
+            panic!(
+                "slot 8 (#aca9a9) on the declared background (#eeeeee) is {:.2}:1, so it has to \
+                 be repaired rather than shipped",
+                2.01
+            )
+        });
+        assert_ne!(repaired, fg, "a colliding colour must not be kept as-is");
+
+        let fg_rgb = palette
+            .painted(repaired, PaletteRole::Foreground)
+            .expect("a repaired colour is absolute, so its RGB is knowable");
+        let bg_rgb = palette
+            .painted(bg, PaletteRole::Background)
+            .expect("the declared background is knowable");
+        let ratio = contrast_ratio(fg_rgb, bg_rgb);
+        assert!(
+            ratio >= MIN_CONTRAST_RATIO,
+            "the repaired colour paints {:?} on {:?}, a contrast ratio of {:.2}:1 (need {:.1}:1)",
+            fg_rgb,
+            bg_rgb,
+            ratio,
+            MIN_CONTRAST_RATIO
+        );
+    }
+
+    /// The other half of the report: a chip that paints one named colour *on*
+    /// another. Fresh chose both sides itself, so neither defers to the
+    /// terminal — but their mutual contrast still belongs to the palette, and
+    /// `terminal` bets that slot 15 is bright. On Zenwritten Light it is a mid
+    /// grey and the chip lands at 1.04:1, which is the "invisible selection"
+    /// half of the report.
+    #[test]
+    fn declared_palette_repairs_a_named_foreground_colliding_with_a_named_fill() {
+        let palette = zenwritten_light();
+        let fg = Color::White; // terminal.json: menu_active_fg
+        let bg = Color::Blue; // terminal.json: menu_active_bg
+
+        let shipped = contrast_ratio(
+            palette.resolve(fg, PaletteRole::Foreground).unwrap(),
+            palette.resolve(bg, PaletteRole::Background).unwrap(),
+        );
+        assert!(
+            shipped < MIN_CONTRAST_RATIO,
+            "the premise: this pair has to be a collision on this palette, but it is {:.2}:1",
+            shipped
+        );
+
+        assert_eq!(
+            repaired_fg(fg, bg),
+            None,
+            "no declaration, so the pair is unknowable and nothing is repaired"
+        );
+
+        let repaired = repaired_fg_with_palette(fg, bg, &palette).unwrap_or_else(|| {
+            panic!("a pair shipping at {:.2}:1 has to be repaired", shipped)
+        });
+
+        let ratio = contrast_ratio(
+            palette.painted(repaired, PaletteRole::Foreground).unwrap(),
+            palette.painted(bg, PaletteRole::Background).unwrap(),
+        );
+        assert!(
+            ratio >= MIN_CONTRAST_RATIO,
+            "the repair moved {:.2}:1 to {:.2}:1, still under the {:.1}:1 bar",
+            shipped,
+            ratio,
+            MIN_CONTRAST_RATIO
         );
     }
 }

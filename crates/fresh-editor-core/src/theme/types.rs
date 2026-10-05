@@ -3605,4 +3605,175 @@ mod tests {
             }
         }
     }
+
+    /// The `terminal` theme names its colours, so what they paint is the user's
+    /// palette. With no declaration, none of its pairs can be checked at all —
+    /// both tests above `continue` past every one of them — which is how it
+    /// ships `White` on a named fill at 1.04:1 and `DarkGray` comments at
+    /// 2.01:1 on a palette whose slot 0 *is* the background and whose slot 15
+    /// is a mid grey.
+    ///
+    /// Declaring the palette makes those pairs answerable, and this holds the
+    /// pairings that carry *text* to the bar `MIN_CONTRAST_RATIO` claims.
+    ///
+    /// The list is explicit rather than "every `*_fg`" because most of what a
+    /// theme paints is meant to be quiet: scrollbar tracks, separators, menu
+    /// borders and whitespace indicators are deliberate hairlines at 1.3-2.6:1,
+    /// and holding them to 3:1 would make the UI shout. What has to read is
+    /// text — labels, selection chips, diagnostics, comments — which is the set
+    /// the report's failures all fall in.
+    ///
+    /// Zenwritten Light is the worked palette because it is the one that
+    /// motivated the declared path. Run with `--nocapture` for the repair log.
+    #[test]
+    fn declared_palette_leaves_no_builtin_text_pair_unreadable() {
+        use crate::color_support::{
+            contrast_ratio, repaired_fg_with_palette, PaletteRole, TerminalPalette,
+            MIN_CONTRAST_RATIO,
+        };
+
+        // (foreground key, background key). An empty background means the
+        // section paints on the editor's own background.
+        const TEXT_PAIRS: &[(&str, &str, &str)] = &[
+            ("editor", "fg", "bg"),
+            ("editor", "line_number_fg", "line_number_bg"),
+            ("editor", "diff_add_collision_fg", "diff_add_bg"),
+            ("editor", "diff_remove_collision_fg", "diff_remove_bg"),
+            ("editor", "diff_modify_collision_fg", "diff_modify_bg"),
+            ("syntax", "keyword", ""),
+            ("syntax", "string", ""),
+            ("syntax", "comment", ""),
+            ("syntax", "function", ""),
+            ("syntax", "type", ""),
+            ("syntax", "variable", ""),
+            ("syntax", "variable_builtin", ""),
+            ("syntax", "constant", ""),
+            ("syntax", "operator", ""),
+            ("syntax", "punctuation_bracket", ""),
+            ("syntax", "punctuation_delimiter", ""),
+            ("ui", "tab_active_fg", "tab_active_bg"),
+            ("ui", "tab_inactive_fg", "tab_inactive_bg"),
+            ("ui", "menu_fg", "menu_bg"),
+            ("ui", "menu_active_fg", "menu_active_bg"),
+            ("ui", "menu_highlight_fg", "menu_highlight_bg"),
+            ("ui", "popup_selection_fg", "popup_selection_bg"),
+            ("ui", "popup_text_fg", "popup_bg"),
+            ("ui", "prompt_fg", "prompt_bg"),
+            ("ui", "prompt_selection_fg", "prompt_selection_bg"),
+            ("ui", "settings_selected_fg", "settings_selected_bg"),
+            ("ui", "status_bar_fg", "status_bar_bg"),
+            ("ui", "status_palette_fg", "status_palette_bg"),
+            ("ui", "blame_header_fg", "blame_header_bg"),
+            ("ui", "menu_hover_fg", "menu_hover_bg"),
+            ("ui", "help_fg", "help_bg"),
+            ("ui", "help_key_fg", ""),
+            ("ui", "status_error_indicator_fg", "status_error_indicator_bg"),
+            ("ui", "status_warning_indicator_fg", "status_warning_indicator_bg"),
+            ("ui", "file_status_added_fg", ""),
+            ("ui", "file_status_modified_fg", ""),
+            ("ui", "file_status_deleted_fg", ""),
+            ("ui", "file_status_renamed_fg", ""),
+            ("ui", "file_status_untracked_fg", ""),
+            ("ui", "file_status_conflicted_fg", ""),
+            ("search", "match_fg", "match_bg"),
+            ("search", "label_fg", "label_bg"),
+            ("diagnostic", "error_fg", ""),
+            ("diagnostic", "warning_fg", ""),
+            ("diagnostic", "info_fg", ""),
+            ("diagnostic", "hint_fg", ""),
+        ];
+
+        let palette = TerminalPalette::new(
+            (0xee, 0xee, 0xee),
+            (0x35, 0x35, 0x35),
+            [
+                (0xee, 0xee, 0xee),
+                (0xa8, 0x33, 0x4c),
+                (0x4f, 0x6c, 0x31),
+                (0x94, 0x49, 0x27),
+                (0x28, 0x64, 0x86),
+                (0x88, 0x50, 0x7d),
+                (0x3b, 0x89, 0x92),
+                (0x35, 0x35, 0x35),
+                (0xac, 0xa9, 0xa9),
+                (0x94, 0x25, 0x3e),
+                (0x3f, 0x5a, 0x22),
+                (0x80, 0x3d, 0x1c),
+                (0x1d, 0x55, 0x73),
+                (0x7b, 0x3b, 0x70),
+                (0x2b, 0x74, 0x7c),
+                (0x5c, 0x5c, 0x5c),
+            ],
+        );
+
+        // A theme colour as the JSON spells it: a name, an `[r, g, b]`, or a
+        // `{ color, modifier }` wrapper.
+        fn color_of(value: &serde_json::Value) -> Option<Color> {
+            let value = value.get("color").unwrap_or(value);
+            serde_json::from_value::<ColorDef>(value.clone())
+                .ok()
+                .map(Color::from)
+        }
+
+        let painted = |color: Color, role| {
+            palette
+                .painted(color, role)
+                .unwrap_or_else(|| panic!("the declaration covers {:?}", color))
+        };
+
+        for builtin in BUILTIN_THEMES {
+            let raw: serde_json::Value = serde_json::from_str(builtin.json)
+                .unwrap_or_else(|e| panic!("Theme '{}' is not valid JSON: {}", builtin.name, e));
+            let editor_bg = raw.get("editor").and_then(|e| e.get("bg"));
+
+            for (section, fg_key, bg_key) in TEXT_PAIRS {
+                let section_json = raw.get(*section);
+                let fg = section_json
+                    .and_then(|s| s.get(*fg_key))
+                    .and_then(color_of);
+                let bg = if bg_key.is_empty() {
+                    editor_bg.and_then(color_of)
+                } else {
+                    section_json.and_then(|s| s.get(*bg_key)).and_then(color_of)
+                };
+                let (Some(fg), Some(bg)) = (fg, bg) else {
+                    continue; // The theme does not name this pairing.
+                };
+
+                let shipped = contrast_ratio(
+                    painted(fg, PaletteRole::Foreground),
+                    painted(bg, PaletteRole::Background),
+                );
+                let repaired = repaired_fg_with_palette(fg, bg, &palette);
+                let after = match repaired {
+                    Some(color) => contrast_ratio(
+                        painted(color, PaletteRole::Foreground),
+                        painted(bg, PaletteRole::Background),
+                    ),
+                    None => shipped,
+                };
+
+                if repaired.is_some() {
+                    eprintln!(
+                        "  {}: {}.{} — {:?} on {:?} at {:.2}:1 repaired to {:?} at {:.2}:1",
+                        builtin.name, section, fg_key, fg, bg, shipped, repaired, after
+                    );
+                }
+
+                assert!(
+                    after >= MIN_CONTRAST_RATIO,
+                    "Theme '{}': `{}.{}` ships {:?} on {:?} at {:.2}:1 and the declared palette \
+                     can only bring it to {:.2}:1 (need {:.1}:1)",
+                    builtin.name,
+                    section,
+                    fg_key,
+                    fg,
+                    bg,
+                    shipped,
+                    after,
+                    MIN_CONTRAST_RATIO
+                );
+            }
+        }
+    }
 }
