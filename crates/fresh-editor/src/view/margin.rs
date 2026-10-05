@@ -1,4 +1,6 @@
 use crate::model::marker::{MarkerId, MarkerList};
+use crate::view::theme::{token_color_named_from_ratatui, Theme};
+use fresh_core::api::OverlayColorSpec;
 use ratatui::style::{Color, Style};
 use std::collections::BTreeMap;
 
@@ -27,8 +29,15 @@ pub enum MarginPosition {
 pub struct LineIndicator {
     /// The symbol to display (e.g., "│", "●", "★")
     pub symbol: String,
-    /// The color of the indicator
-    pub color: Color,
+    /// What to paint the symbol in.
+    ///
+    /// A *spec* rather than a resolved colour, because the interesting case
+    /// names a theme key: `ui.file_status_added_fg` is the palette's own green
+    /// under the `terminal` theme, so a git mark can follow the user's terminal
+    /// palette instead of shipping a colour. Re-resolving at paint time is what
+    /// makes it follow a *change* to that palette — a snapshot taken when the
+    /// indicator was set would go stale the moment the theme did.
+    pub color: OverlayColorSpec,
     /// Priority for display when multiple indicators exist (higher wins)
     pub priority: i32,
     /// Marker ID anchoring this indicator to a byte position
@@ -39,12 +48,59 @@ pub struct LineIndicator {
 impl LineIndicator {
     /// Create a new line indicator (marker_id will be set when added to MarginManager)
     pub fn new(symbol: impl Into<String>, color: Color, priority: i32) -> Self {
+        Self::from_spec(symbol, spec_from_color(color), priority)
+    }
+
+    /// Create a line indicator painted from a theme key, so it tracks the theme
+    /// rather than a snapshot of it.
+    pub fn new_keyed(
+        symbol: impl Into<String>,
+        theme_key: impl Into<String>,
+        priority: i32,
+    ) -> Self {
+        Self::from_spec(symbol, OverlayColorSpec::ThemeKey(theme_key.into()), priority)
+    }
+
+    fn from_spec(symbol: impl Into<String>, color: OverlayColorSpec, priority: i32) -> Self {
         Self {
             symbol: symbol.into(),
             color,
             priority,
             marker_id: MarkerId(0), // Placeholder, set by MarginManager
         }
+    }
+
+    /// The colour to paint this symbol, resolved against `theme` now.
+    pub fn color(&self, theme: &Theme) -> Color {
+        match &self.color {
+            OverlayColorSpec::Rgb(r, g, b) => Color::Rgb(*r, *g, *b),
+            OverlayColorSpec::ThemeKey(key) => theme
+                .resolve_theme_key(key)
+                // A bare ANSI name ("Green") is not a `section.field` key, so
+                // `resolve_theme_key` declines it — but it still names a palette
+                // slot and still has to resolve, or a caller handing us
+                // `Color::Green` would silently lose its colour.
+                .or_else(|| crate::view::theme::named_color_from_str(key))
+                .unwrap_or(Color::Reset),
+        }
+    }
+}
+
+/// The spec for a colour we already hold.
+///
+/// `Color::Rgb` stays absolute. A named ANSI colour is a *reference* to the
+/// terminal's palette, so it travels as its name and re-resolves at paint time;
+/// snapshotting it here would defeat the point of carrying a spec at all.
+fn spec_from_color(color: Color) -> OverlayColorSpec {
+    match color {
+        Color::Rgb(r, g, b) => OverlayColorSpec::Rgb(r, g, b),
+        Color::Indexed(_) => {
+            use crate::view::color_support::{painted_rgb, ColorCapability};
+            painted_rgb(color, ColorCapability::TrueColor)
+                .map(|(r, g, b)| OverlayColorSpec::Rgb(r, g, b))
+                .unwrap_or(OverlayColorSpec::ThemeKey("Default".to_owned()))
+        }
+        named => OverlayColorSpec::ThemeKey(token_color_named_from_ratatui(named).to_owned()),
     }
 }
 
@@ -828,6 +884,52 @@ mod tests {
             .remove(&line)
     }
 
+    /// An indicator may name a theme key instead of carrying a colour, and that
+    /// is what lets a git gutter follow the terminal palette: `terminal` maps
+    /// `ui.file_status_added_fg` to `Green`, so the mark is painted from the
+    /// palette's own slot rather than from a value the plugin shipped.
+    ///
+    /// Resolution is at *paint* time, not set time. The same indicator under two
+    /// themes has to paint two colours — otherwise a palette that changes at
+    /// dusk would leave every mark frozen at whatever it was when it was set.
+    #[test]
+    fn indicator_named_by_theme_key_resolves_at_paint_time() {
+        let indicator = LineIndicator::new_keyed("│", "ui.file_status_added_fg", 10);
+
+        let terminal = Theme::load_builtin("terminal").expect("terminal theme must exist");
+        assert_eq!(
+            indicator.color(&terminal),
+            Color::Green,
+            "the terminal theme maps file_status_added_fg to the palette's own green"
+        );
+
+        let dark = Theme::load_builtin("dark").expect("dark theme must exist");
+        assert_eq!(
+            indicator.color(&dark),
+            dark.file_status_added_fg,
+            "and under another theme it resolves to that theme's value"
+        );
+    }
+
+    /// An absolute colour stays absolute: nothing to resolve, nothing to go
+    /// stale.
+    #[test]
+    fn indicator_given_as_rgb_paints_that_rgb() {
+        let indicator = LineIndicator::new("●", Color::Rgb(1, 2, 3), 10);
+        let terminal = Theme::load_builtin("terminal").expect("terminal theme must exist");
+        assert_eq!(indicator.color(&terminal), Color::Rgb(1, 2, 3));
+    }
+
+    /// A named ANSI colour travels as its name and comes back as the same
+    /// colour, so existing `LineIndicator::new(.., Color::Green, ..)` callers
+    /// keep working *and* keep deferring to the palette.
+    #[test]
+    fn indicator_given_as_a_named_colour_round_trips() {
+        let indicator = LineIndicator::new("│", Color::Green, 10);
+        let terminal = Theme::load_builtin("terminal").expect("terminal theme must exist");
+        assert_eq!(indicator.color(&terminal), Color::Green);
+    }
+
     #[test]
     fn test_line_indicator_basic() {
         let mut manager = MarginManager::new();
@@ -841,7 +943,7 @@ mod tests {
         assert!(retrieved.is_some());
         let retrieved = retrieved.unwrap();
         assert_eq!(retrieved.symbol, "│");
-        assert_eq!(retrieved.color, Color::Green);
+        assert_eq!(retrieved.color, OverlayColorSpec::ThemeKey("Green".into()));
         assert_eq!(retrieved.priority, 10);
 
         // Non-existent line should return None
