@@ -1369,14 +1369,22 @@ pub mod shell_theme {
 
         /// What ratatui paints for this.
         ///
-        /// The attribute the theme declares for the foreground key composes
-        /// with the structural ones the ink asked for.
+        /// The attribute the theme declares for either half composes with the
+        /// structural ones the ink asked for. **Both halves, not just the
+        /// foreground**: a terminal-adaptive theme says "the terminal's own
+        /// colours, swapped" by declaring `reversed` on the *background* key,
+        /// because the foreground is what it is swapping. Reading only the
+        /// foreground key dropped the attribute and painted the chip as a flat
+        /// tint of whatever the palette put there — which on a palette whose
+        /// bright slots are not bright is no chip at all.
         pub fn style(&self, theme: &Theme) -> Option<Style> {
             let (fg, bg) = (self.fg.color(theme)?, self.bg.color(theme)?);
-            let declared = match self.fg.name() {
-                Some(k) => theme.resolve_modifier_key(k),
-                None => Modifier::empty(),
-            };
+            let declared = [self.fg.name(), self.bg.name()]
+                .into_iter()
+                .flatten()
+                .fold(Modifier::empty(), |acc, key| {
+                    acc | theme.resolve_modifier_key(key)
+                });
             Some(
                 Style::default()
                     .fg(fg)
