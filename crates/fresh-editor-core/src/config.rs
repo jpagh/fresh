@@ -1,3 +1,4 @@
+use crate::color_support::{parse_hex_rgb, TerminalPalette};
 use crate::types::{context_keys, LspFeature, LspLanguageConfig, LspServerConfig, ProcessLimits};
 
 use fresh_i18n::t;
@@ -1108,6 +1109,120 @@ impl Default for StatusBarConfig {
     }
 }
 
+/// The colours the terminal actually paints, so Fresh can tell whether a
+/// foreground will be readable on its background.
+///
+/// The `terminal` theme names its colours instead of choosing them, and `Reset`
+/// means "whatever the terminal's default is" — so without this, every pair the
+/// theme defines is unknowable and cannot be checked or repaired. On a palette
+/// that does not follow the usual slot roles (a light theme whose slot 0 is the
+/// background, or whose slot 15 is a mid grey) that leaves real text unreadable.
+///
+/// Every field is optional, and declaring only what you know is the intended
+/// use: `bg`, `fg`, `slot_8` and `slot_15` cover most of it. Anything left out
+/// stays the terminal's to decide and is simply not repaired.
+///
+/// This *describes* your palette; it does not override it. Nothing here changes
+/// what Fresh emits — named colours still go out as named colours and `Reset`
+/// still emits the terminal default — so it is safe to declare a palette that
+/// only resembles the real one.
+///
+/// Example: `{"bg": "#eeeeee", "fg": "#353535", "slot_8": "#aca9a9", "slot_15": "#5c5c5c"}`
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct TerminalPaletteConfig {
+    /// The terminal's default background, e.g. `#eeeeee`.
+    #[schemars(extend("x-section" = "Display"))]
+    pub bg: Option<String>,
+    /// The terminal's default foreground, e.g. `#353535`.
+    #[schemars(extend("x-section" = "Display"))]
+    pub fg: Option<String>,
+    /// ANSI slot 0 — "black". On a light terminal theme often the background.
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_0: Option<String>,
+    /// ANSI slot 1 — "red".
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_1: Option<String>,
+    /// ANSI slot 2 — "green".
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_2: Option<String>,
+    /// ANSI slot 3 — "yellow".
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_3: Option<String>,
+    /// ANSI slot 4 — "blue". Selection chips paint on this one.
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_4: Option<String>,
+    /// ANSI slot 5 — "magenta". Search labels and the palette chip paint on this one.
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_5: Option<String>,
+    /// ANSI slot 6 — "cyan".
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_6: Option<String>,
+    /// ANSI slot 7 — "white"/grey. Inactive tabs and hints use this one.
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_7: Option<String>,
+    /// ANSI slot 8 — "bright black". Comments, line numbers and separators use this one.
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_8: Option<String>,
+    /// ANSI slot 9 — "bright red".
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_9: Option<String>,
+    /// ANSI slot 10 — "bright green".
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_10: Option<String>,
+    /// ANSI slot 11 — "bright yellow".
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_11: Option<String>,
+    /// ANSI slot 12 — "bright blue".
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_12: Option<String>,
+    /// ANSI slot 13 — "bright magenta".
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_13: Option<String>,
+    /// ANSI slot 14 — "bright cyan".
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_14: Option<String>,
+    /// ANSI slot 15 — "bright white". Not white on every palette; a mid grey here
+    /// is what makes the `terminal` theme's selection chips unreadable.
+    #[schemars(extend("x-section" = "Display"))]
+    pub slot_15: Option<String>,
+}
+
+impl TerminalPaletteConfig {
+    /// The palette the renderer can reason about, or `None` when the declaration
+    /// is empty — so an absent or blank setting is indistinguishable from having
+    /// no setting at all.
+    ///
+    /// An unparseable value is left undeclared rather than guessed at, which
+    /// keeps a typo to "this colour was not declared" instead of repainting the
+    /// UI around the wrong colour.
+    pub fn to_palette(&self) -> Option<TerminalPalette> {
+        let resolve = |value: &Option<String>| value.as_deref().and_then(parse_hex_rgb);
+        let slots = [
+            &self.slot_0,
+            &self.slot_1,
+            &self.slot_2,
+            &self.slot_3,
+            &self.slot_4,
+            &self.slot_5,
+            &self.slot_6,
+            &self.slot_7,
+            &self.slot_8,
+            &self.slot_9,
+            &self.slot_10,
+            &self.slot_11,
+            &self.slot_12,
+            &self.slot_13,
+            &self.slot_14,
+            &self.slot_15,
+        ]
+        .map(resolve);
+
+        let palette = TerminalPalette::declared(resolve(&self.bg), resolve(&self.fg), slots);
+        (!palette.is_empty()).then_some(palette)
+    }
+}
+
 /// Editor behavior configuration
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EditorConfig {
@@ -1269,6 +1384,17 @@ pub struct EditorConfig {
     #[serde(default = "default_false")]
     #[schemars(extend("x-section" = "Display"))]
     pub use_terminal_bg: bool,
+
+    /// The colours your terminal actually paints, so Fresh can tell whether a
+    /// foreground will be readable on its background when a theme names its
+    /// colours instead of choosing them (see `TerminalPaletteConfig`).
+    ///
+    /// Only affects themes that defer to your palette — `terminal` above all.
+    /// Nothing is emitted differently; this only lets an unreadable pair be
+    /// repaired instead of shipped. Default: undeclared.
+    #[serde(default)]
+    #[schemars(extend("x-section" = "Display"))]
+    pub terminal_palette: TerminalPaletteConfig,
 
     /// Set the terminal window title to "<file> — Fresh" for the active buffer.
     /// Default: true
@@ -1833,6 +1959,7 @@ impl Default for EditorConfig {
             show_tilde: true,
             nerd_font_icons: false,
             use_terminal_bg: false,
+            terminal_palette: TerminalPaletteConfig::default(),
             set_window_title: true,
             terminal_auto_title: true,
             rulers: Vec::new(),
@@ -9425,5 +9552,86 @@ mod tests {
                 "{language}: asm-lsp must exclude pull diagnostics"
             );
         }
+    }
+
+    /// A declared palette is only as good as its parsing, and every field is
+    /// optional so the common case — the few values that fix a broken
+    /// `terminal` theme — stays a short config.
+    #[test]
+    fn terminal_palette_config_parses_fully_partially_and_never_guesses() {
+        use crate::color_support::PaletteRole;
+        use ratatui::style::Color;
+
+        // Nothing declared must be indistinguishable from no setting, or the
+        // repair pass would run against a palette that says nothing.
+        assert!(TerminalPaletteConfig::default().to_palette().is_none());
+        assert!(
+            serde_json::from_str::<TerminalPaletteConfig>("{}")
+                .expect("an empty object is a valid, empty declaration")
+                .to_palette()
+                .is_none(),
+            "an empty declaration must not become a palette"
+        );
+
+        // Zenwritten Light — the four values that matter: the default surface
+        // and text colour, and the two slots the `terminal` theme's text lands
+        // on. Slot 0 is the background and slot 15 a mid grey, which is the
+        // whole reason this setting exists.
+        let partial: TerminalPaletteConfig = serde_json::from_str(
+            r##"{"bg": "#eeeeee", "fg": "#353535", "slot_8": "#aca9a9", "slot_15": "#5c5c5c"}"##,
+        )
+        .expect("a partial declaration is the intended use");
+        let palette = partial.to_palette().expect("four values are a palette");
+
+        assert_eq!(
+            palette.resolve(Color::Reset, PaletteRole::Background),
+            Some((0xee, 0xee, 0xee))
+        );
+        assert_eq!(
+            palette.resolve(Color::Reset, PaletteRole::Foreground),
+            Some((0x35, 0x35, 0x35))
+        );
+        assert_eq!(
+            palette.resolve(Color::DarkGray, PaletteRole::Foreground),
+            Some((0xac, 0xa9, 0xa9))
+        );
+        assert_eq!(
+            palette.resolve(Color::White, PaletteRole::Foreground),
+            Some((0x5c, 0x5c, 0x5c))
+        );
+        assert_eq!(
+            palette.resolve(Color::Blue, PaletteRole::Foreground),
+            None,
+            "slot 4 was not declared, so it stays the terminal's to decide \
+             rather than being assumed"
+        );
+
+        // `#rgb` shorthand, because a palette is a thing people paste.
+        let shorthand: TerminalPaletteConfig =
+            serde_json::from_str(r##"{"bg": "#eee"}"##).unwrap();
+        assert_eq!(
+            shorthand
+                .to_palette()
+                .expect("shorthand still declares something")
+                .resolve(Color::Reset, PaletteRole::Background),
+            Some((0xee, 0xee, 0xee))
+        );
+
+        // A typo leaves the colour undeclared rather than painting something
+        // wrong, so a bad value degrades to "not repaired" and no worse.
+        let typo: TerminalPaletteConfig = serde_json::from_str(r##"{"bg": "#nope"}"##).unwrap();
+        assert!(
+            typo.to_palette().is_none(),
+            "an unparseable value must leave the palette empty, not guess"
+        );
+    }
+
+    /// A misspelled slot is a config error, not a silently ignored entry.
+    #[test]
+    fn terminal_palette_config_rejects_unknown_keys() {
+        assert!(
+            serde_json::from_str::<TerminalPaletteConfig>(r##"{"slot_16": "#ffffff"}"##).is_err(),
+            "there is no slot_16; the ANSI slots are slot_0 .. slot_15"
+        );
     }
 }

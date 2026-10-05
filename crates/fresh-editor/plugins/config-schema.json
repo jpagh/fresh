@@ -95,6 +95,26 @@
         "show_tilde": true,
         "nerd_font_icons": false,
         "use_terminal_bg": false,
+        "terminal_palette": {
+          "bg": null,
+          "fg": null,
+          "slot_0": null,
+          "slot_1": null,
+          "slot_2": null,
+          "slot_3": null,
+          "slot_4": null,
+          "slot_5": null,
+          "slot_6": null,
+          "slot_7": null,
+          "slot_8": null,
+          "slot_9": null,
+          "slot_10": null,
+          "slot_11": null,
+          "slot_12": null,
+          "slot_13": null,
+          "slot_14": null,
+          "slot_15": null
+        },
         "set_window_title": true,
         "terminal_auto_title": true,
         "cursor_style": "default",
@@ -628,6 +648,31 @@
           "description": "Use the terminal's background instead of the theme's, so terminal\ntransparency or custom backgrounds show through. Default: false",
           "type": "boolean",
           "default": false,
+          "x-section": "Display"
+        },
+        "terminal_palette": {
+          "description": "The colours your terminal actually paints, so Fresh can tell whether a\nforeground will be readable on its background when a theme names its\ncolours instead of choosing them (see `TerminalPaletteConfig`).\n\nOnly affects themes that defer to your palette — `terminal` above all.\nNothing is emitted differently; this only lets an unreadable pair be\nrepaired instead of shipped. Default: undeclared.",
+          "$ref": "#/$defs/TerminalPaletteConfig",
+          "default": {
+            "bg": null,
+            "fg": null,
+            "slot_0": null,
+            "slot_1": null,
+            "slot_2": null,
+            "slot_3": null,
+            "slot_4": null,
+            "slot_5": null,
+            "slot_6": null,
+            "slot_7": null,
+            "slot_8": null,
+            "slot_9": null,
+            "slot_10": null,
+            "slot_11": null,
+            "slot_12": null,
+            "slot_13": null,
+            "slot_14": null,
+            "slot_15": null
+          },
           "x-section": "Display"
         },
         "set_window_title": {
@@ -1207,6 +1252,175 @@
           "default": false
         }
       }
+    },
+    "TerminalPaletteConfig": {
+      "description": "The colours the terminal actually paints, so Fresh can tell whether a\nforeground will be readable on its background.\n\nThe `terminal` theme names its colours instead of choosing them, and `Reset`\nmeans \"whatever the terminal's default is\" — so without this, every pair the\ntheme defines is unknowable and cannot be checked or repaired. On a palette\nthat does not follow the usual slot roles (a light theme whose slot 0 is the\nbackground, or whose slot 15 is a mid grey) that leaves real text unreadable.\n\nEvery field is optional, and declaring only what you know is the intended\nuse: `bg`, `fg`, `slot_8` and `slot_15` cover most of it. Anything left out\nstays the terminal's to decide and is simply not repaired.\n\nThis *describes* your palette; it does not override it. Nothing here changes\nwhat Fresh emits — named colours still go out as named colours and `Reset`\nstill emits the terminal default — so it is safe to declare a palette that\nonly resembles the real one.\n\nExample: `{\"bg\": \"#eeeeee\", \"fg\": \"#353535\", \"slot_8\": \"#aca9a9\", \"slot_15\": \"#5c5c5c\"}`",
+      "type": "object",
+      "properties": {
+        "bg": {
+          "description": "The terminal's default background, e.g. `#eeeeee`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "fg": {
+          "description": "The terminal's default foreground, e.g. `#353535`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_0": {
+          "description": "ANSI slot 0 — \"black\". On a light terminal theme often the background.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_1": {
+          "description": "ANSI slot 1 — \"red\".",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_2": {
+          "description": "ANSI slot 2 — \"green\".",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_3": {
+          "description": "ANSI slot 3 — \"yellow\".",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_4": {
+          "description": "ANSI slot 4 — \"blue\". Selection chips paint on this one.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_5": {
+          "description": "ANSI slot 5 — \"magenta\". Search labels and the palette chip paint on this one.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_6": {
+          "description": "ANSI slot 6 — \"cyan\".",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_7": {
+          "description": "ANSI slot 7 — \"white\"/grey. Inactive tabs and hints use this one.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_8": {
+          "description": "ANSI slot 8 — \"bright black\". Comments, line numbers and separators use this one.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_9": {
+          "description": "ANSI slot 9 — \"bright red\".",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_10": {
+          "description": "ANSI slot 10 — \"bright green\".",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_11": {
+          "description": "ANSI slot 11 — \"bright yellow\".",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_12": {
+          "description": "ANSI slot 12 — \"bright blue\".",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_13": {
+          "description": "ANSI slot 13 — \"bright magenta\".",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_14": {
+          "description": "ANSI slot 14 — \"bright cyan\".",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        },
+        "slot_15": {
+          "description": "ANSI slot 15 — \"bright white\". Not white on every palette; a mid grey here\nis what makes the `terminal` theme's selection chips unreadable.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "x-section": "Display"
+        }
+      },
+      "additionalProperties": false
     },
     "CursorStyle": {
       "description": "Terminal cursor style",

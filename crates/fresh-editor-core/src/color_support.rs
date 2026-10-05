@@ -453,34 +453,58 @@ pub enum PaletteRole {
 /// whether a pair needs repairing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerminalPalette {
-    bg: (u8, u8, u8),
-    fg: (u8, u8, u8),
-    slots: [(u8, u8, u8); 16],
+    bg: Option<(u8, u8, u8)>,
+    fg: Option<(u8, u8, u8)>,
+    slots: [Option<(u8, u8, u8)>; 16],
 }
 
 impl TerminalPalette {
-    /// Declare a palette: the default surface, the default text colour, and
-    /// the sixteen ANSI slots the named colours stand for.
+    /// Declare a palette in full: the default surface, the default text
+    /// colour, and all sixteen ANSI slots.
     pub fn new(bg: (u8, u8, u8), fg: (u8, u8, u8), slots: [(u8, u8, u8); 16]) -> Self {
+        Self {
+            bg: Some(bg),
+            fg: Some(fg),
+            slots: slots.map(Some),
+        }
+    }
+
+    /// Declare only what is known. Anything left out stays the terminal's to
+    /// decide and [`Self::resolve`] answers `None` for it, so the pair falls
+    /// back to the standard palette rather than to a guess. A partial
+    /// declaration is the normal case: four values fix the reported failures,
+    /// and the rest of the slots are only needed for colours the theme does not
+    /// actually pair.
+    pub fn declared(
+        bg: Option<(u8, u8, u8)>,
+        fg: Option<(u8, u8, u8)>,
+        slots: [Option<(u8, u8, u8)>; 16],
+    ) -> Self {
         Self { bg, fg, slots }
     }
 
+    /// Whether this declaration says anything at all. An empty one must be
+    /// indistinguishable from no palette, so callers can treat it that way.
+    pub fn is_empty(&self) -> bool {
+        self.bg.is_none() && self.fg.is_none() && self.slots.iter().all(Option::is_none)
+    }
+
     /// The RGB this palette paints for `color`, or `None` when the colour is
-    /// not the terminal's to decide.
+    /// not the terminal's to decide *or* the declaration does not cover it.
     ///
-    /// Covered: `Reset`, by role, and the named colours — which *are* slots
-    /// 0-15. Not covered: an absolute RGB, which is already knowable, and
-    /// indices 16 and up, which the 256-colour cube and grey ramp fix rather
-    /// than the user's palette.
+    /// Covered when declared: `Reset`, by role, and the named colours — which
+    /// *are* slots 0-15. Never covered: an absolute RGB, which is already
+    /// knowable, and indices 16 and up, which the 256-colour cube and grey ramp
+    /// fix rather than the user's palette.
     pub fn resolve(&self, color: Color, role: PaletteRole) -> Option<(u8, u8, u8)> {
         match color {
-            Color::Reset => Some(match role {
+            Color::Reset => match role {
                 PaletteRole::Foreground => self.fg,
                 PaletteRole::Background => self.bg,
-            }),
+            },
             Color::Rgb(..) => None,
             Color::Indexed(idx) if idx >= 16 => None,
-            _ => color_to_palette_index(color).map(|idx| self.slots[idx as usize]),
+            _ => color_to_palette_index(color).and_then(|idx| self.slots[idx as usize]),
         }
     }
 
@@ -685,20 +709,50 @@ fn find_readable_256_color_near(fg_rgb: (u8, u8, u8), bg_rgb: (u8, u8, u8)) -> O
 /// Convert all colors in a ratatui Buffer for the given color capability
 /// This is the main entry point - call once after all widgets have rendered
 pub fn convert_buffer_colors(buffer: &mut ratatui::buffer::Buffer, capability: ColorCapability) {
+    convert_buffer_colors_with_palette(buffer, capability, None)
+}
+
+/// [`convert_buffer_colors`], with a declared terminal palette available to the
+/// contrast repair.
+///
+/// Without a palette this is exactly the old behaviour. With one, two things
+/// change, both aimed at the same gap — that the `terminal` theme is made of
+/// colours only the terminal knows:
+///
+/// 1. The repair runs in `TrueColor` too. That is the mode where nothing else
+///    runs at all, and precisely the mode the nameless-colour themes are used
+///    in, so leaving it out was leaving out the case that matters.
+/// 2. The repair also considers pairs the palette resolves, which is what
+///    reaches a `Reset` background and the named slots. Those are the pairs
+///    `readable_fg` has to skip.
+///
+/// `Color16` is left out: `convert_color` has already quantised by then, so a
+/// repaired `Indexed(>= 16)` would be a colour that terminal cannot paint.
+pub fn convert_buffer_colors_with_palette(
+    buffer: &mut ratatui::buffer::Buffer,
+    capability: ColorCapability,
+    palette: Option<&TerminalPalette>,
+) {
     // For true color terminals, no conversion needed
-    if capability == ColorCapability::TrueColor {
-        return;
+    if capability != ColorCapability::TrueColor {
+        for cell in buffer.content.iter_mut() {
+            cell.fg = convert_color(cell.fg, capability);
+            cell.bg = convert_color(cell.bg, capability);
+        }
+
+        // Enforce minimum contrast for 256-color mode
+        if capability == ColorCapability::Color256 {
+            enforce_minimum_contrast(buffer);
+        }
     }
 
-    // Iterate through all cells and convert colors
-    for cell in buffer.content.iter_mut() {
-        cell.fg = convert_color(cell.fg, capability);
-        cell.bg = convert_color(cell.bg, capability);
-    }
-
-    // Enforce minimum contrast for 256-color mode
-    if capability == ColorCapability::Color256 {
-        enforce_minimum_contrast(buffer);
+    // A declared palette is what makes the terminal-owned pairs answerable, and
+    // this pass is the only thing that can act on that. It touches only those
+    // pairs, so it never re-decides an absolute one the passes above settled.
+    if let Some(palette) = palette {
+        if capability != ColorCapability::Color16 {
+            enforce_minimum_contrast_with_palette(buffer, palette);
+        }
     }
 }
 
@@ -750,6 +804,51 @@ fn readable_fg(fg: Color, bg: Color) -> Color {
 fn enforce_minimum_contrast(buffer: &mut ratatui::buffer::Buffer) {
     for cell in buffer.content.iter_mut() {
         cell.fg = readable_fg(cell.fg, cell.bg);
+    }
+}
+
+/// Post-conversion pass for a buffer whose terminal palette the user declared,
+/// repairing only the pairs the palette has a say in.
+///
+/// Scoped deliberately: a pair of absolute colours is not this declaration's
+/// business, and leaving it alone is what keeps an RGB theme's rendering
+/// untouched by a setting that exists to describe a *terminal*. A pair counts
+/// as the palette's when either side is `Reset` or a named slot it resolves.
+fn enforce_minimum_contrast_with_palette(
+    buffer: &mut ratatui::buffer::Buffer,
+    palette: &TerminalPalette,
+) {
+    for cell in buffer.content.iter_mut() {
+        let terminal_owned = palette
+            .resolve(cell.fg, PaletteRole::Foreground)
+            .is_some()
+            || palette
+                .resolve(cell.bg, PaletteRole::Background)
+                .is_some();
+        if !terminal_owned {
+            continue;
+        }
+        if let Some(repaired) = repaired_fg_with_palette(cell.fg, cell.bg, palette) {
+            cell.fg = repaired;
+        }
+    }
+}
+
+/// Parse a `#rrggbb` or `#rgb` colour, as the config spells a declared palette.
+///
+/// Returns `None` for anything else rather than guessing, so a typo leaves the
+/// colour undeclared instead of painting something wrong.
+pub fn parse_hex_rgb(text: &str) -> Option<(u8, u8, u8)> {
+    let hex = text.trim().trim_start_matches('#');
+    let nibble = |i: usize| u8::from_str_radix(&hex[i..i + 1], 16).ok();
+    let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
+    match hex.len() {
+        3 => {
+            let (r, g, b) = (nibble(0)?, nibble(1)?, nibble(2)?);
+            Some((r * 17, g * 17, b * 17))
+        }
+        6 => Some((byte(0)?, byte(2)?, byte(4)?)),
+        _ => None,
     }
 }
 
@@ -1272,6 +1371,77 @@ mod tests {
             shipped,
             ratio,
             MIN_CONTRAST_RATIO
+        );
+    }
+
+    /// The point of the whole setting: a buffer cell painted the way `terminal`
+    /// paints it — a named foreground on a `Reset` background — is repaired,
+    /// where without the declaration nothing can touch it.
+    ///
+    /// The second cell pins the scoping guarantee. A pair of absolute colours
+    /// is not the declaration's business, so a setting that exists to describe a
+    /// *terminal* must not redecide an RGB theme's rendering.
+    #[test]
+    fn declared_palette_repairs_terminal_owned_buffer_cells() {
+        use ratatui::buffer::Buffer;
+        use ratatui::layout::Rect;
+
+        let palette = zenwritten_light();
+        let area = Rect::new(0, 0, 2, 1);
+        let painted = |with_palette: bool| {
+            let mut buffer = Buffer::empty(area);
+            buffer.content[0].fg = Color::DarkGray; // terminal.json: syntax.comment
+            buffer.content[0].bg = Color::Reset; // terminal.json: editor.bg
+            buffer.content[0].set_symbol("x");
+            buffer.content[1].fg = Color::Rgb(0x10, 0x10, 0x10);
+            buffer.content[1].bg = Color::Rgb(0x11, 0x11, 0x11);
+            buffer.content[1].set_symbol("y");
+
+            convert_buffer_colors_with_palette(
+                &mut buffer,
+                ColorCapability::TrueColor,
+                with_palette.then_some(&palette),
+            );
+            (buffer.content[0].clone(), buffer.content[1].clone())
+        };
+
+        let (without, _) = painted(false);
+        assert_eq!(
+            without.fg,
+            Color::DarkGray,
+            "no declaration, so the pair is the terminal's to decide and is left alone"
+        );
+        assert_eq!(
+            without.bg,
+            Color::Reset,
+            "and `Reset` still goes out as the terminal default — the declaration describes the \
+             palette, it does not replace it"
+        );
+
+        let (declared, absolute) = painted(true);
+        assert_ne!(
+            declared.fg,
+            Color::DarkGray,
+            "a 2.01:1 foreground has to be repaired once the palette is declared"
+        );
+        let fg_rgb = painted_rgb(declared.fg, ColorCapability::TrueColor).unwrap();
+        let bg_rgb = palette
+            .resolve(Color::Reset, PaletteRole::Background)
+            .unwrap();
+        let ratio = contrast_ratio(fg_rgb, bg_rgb);
+        assert!(
+            ratio >= MIN_CONTRAST_RATIO,
+            "the repaired foreground paints {:?} on {:?} at {:.2}:1 (need {:.1}:1)",
+            fg_rgb,
+            bg_rgb,
+            ratio,
+            MIN_CONTRAST_RATIO
+        );
+
+        assert_eq!(
+            (absolute.fg, absolute.bg),
+            (Color::Rgb(0x10, 0x10, 0x10), Color::Rgb(0x11, 0x11, 0x11)),
+            "two absolute colours are not the declaration's business"
         );
     }
 }
