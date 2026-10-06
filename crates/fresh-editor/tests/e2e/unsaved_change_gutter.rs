@@ -21,7 +21,7 @@ fn barred_rows(harness: &EditorTestHarness) -> Vec<usize> {
     let (first, last) = harness.content_area_rows();
     (first..=last)
         .filter(|row| {
-            harness.get_cell(0, *row as u16).as_deref() == Some("│")
+            harness.get_cell(0, *row as u16).as_deref() == Some("┃")
                 && harness
                     .get_cell_style(0, *row as u16)
                     .and_then(|s| s.fg)

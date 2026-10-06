@@ -10,8 +10,8 @@ const editor = getEditor();
  * or HEAD if nothing is staged.
  *
  * Indicator symbols:
- * - │ (green): Added line
- * - │ (yellow): Modified line
+ * - ┃ (green): Added line
+ * - ┃ (yellow): Modified line
  * - ▾ (red): Deleted line(s) below
  *
  * The same hunks are marked on the vertical scrollbar in the same colours, so
@@ -45,9 +45,15 @@ const COLORS = {
 };
 
 // Symbols
+//
+// A *heavy* vertical (U+2503) rather than the light `│` (U+2502). Both fill the
+// gutter's single indicator cell, but the light glyph's stroke is one pixel and
+// all but vanishes against the line-number column; the heavy one reads as the
+// two-to-three pixel bar the change deserves. The column is one cell either way,
+// so this costs no layout or hit-testing change.
 const SYMBOLS = {
-  added: "│",
-  modified: "│",
+  added: "┃",
+  modified: "┃",
   deleted: "▾",
 };
 
