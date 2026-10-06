@@ -29,11 +29,19 @@ const NAMESPACE = "git-gutter";
 const SCROLL_NAMESPACE = "git-gutter-scroll";
 const PRIORITY = 10; // Lower than diagnostics
 
-// Colors (RGB)
+// Theme keys, not RGB.
+//
+// These were Dracula's green/orange/red as literals, so on any other palette the
+// added-line mark was a neon lime belonging to a theme the user is not running.
+// A key is re-resolved at paint time, so the mark follows the palette —
+// including a `terminal` theme whose palette changes with the system at dusk,
+// where a literal freezes one palette's answer forever. All three keys exist in
+// every theme and say exactly what they mean; `terminal` maps them to the
+// palette's own Green / Yellow / Red.
 const COLORS = {
-  added: [80, 250, 123] as [number, number, number],    // Green
-  modified: [255, 184, 108] as [number, number, number], // Orange/Yellow
-  deleted: [255, 85, 85] as [number, number, number],    // Red
+  added: "ui.file_status_added_fg",
+  modified: "ui.file_status_modified_fg",
+  deleted: "ui.file_status_deleted_fg",
 };
 
 // Symbols
@@ -257,9 +265,7 @@ async function updateGitGutter(bufferId: number): Promise<void> {
           line,
           NAMESPACE,
           symbol,
-          color[0],
-          color[1],
-          color[2],
+          color,
           PRIORITY
         );
         // The deleted lines are gone from the new side, so the mark sits on the
@@ -275,9 +281,7 @@ async function updateGitGutter(bufferId: number): Promise<void> {
             line,
             NAMESPACE,
             symbol,
-            color[0],
-            color[1],
-            color[2],
+            color,
             PRIORITY
           );
         }

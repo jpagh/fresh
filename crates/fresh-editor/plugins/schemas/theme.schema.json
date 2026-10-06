@@ -790,7 +790,7 @@
           "description": "Active menu item background",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -838,7 +838,7 @@
           "description": "Highlighted menu item background",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -886,7 +886,7 @@
           "description": "Menu item hover background",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -970,7 +970,7 @@
           "description": "Command palette shortcut hint background in status bar (falls back to status_bar_bg)",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -1090,7 +1090,7 @@
           "description": "Prompt selection background",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -1126,7 +1126,7 @@
           "description": "Popup selected item background",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -1138,7 +1138,7 @@
           "description": "Selection background inside a widget Text input. Reads\nagainst `prompt_bg`, so it needs higher contrast against\nthat tint than `editor.selection_bg` (which targets the\neditor surface). Defaults to the same `popup_selection_bg`\nblue used everywhere \"selected item inside a chrome\nsurface\" is shown — same key the prompt selection uses, so\nthe cue reads consistently across selection UIs.",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -1198,7 +1198,7 @@
           "description": "Selected suggestion background",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -1390,7 +1390,7 @@
           "description": "Background of a git-blame block header band. Falls back to\n`ui.menu_bg` (and the text to its `ui.menu_fg`): a menu is the\nclosest thing a theme already names to what a blame header is — a\nchrome band carrying its own text over the editor — so an\nunspecified header borrows a surface a theme has already made\nlegible rather than a color computed from another one.\n\nEvery shipped theme names both keys explicitly (a test enforces it),\nso this fallback only ever serves user themes. It is exact, not\nderived: a theme whose menu shares the editor background hands the\nheader that background too, and the fix is for it to name the keys.\n\nThe band used to borrow `ui.status_bar_bg`, which several themes set\nto their editor background (`dark` sets exactly it; `high-contrast`\npairs `[20, 20, 20]` with a black editor) — so the header that is\nmeant to separate one commit's block from the next drew on an\neffectively invisible background.",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -1594,7 +1594,7 @@
           "description": "Settings UI selected item background",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -1688,6 +1688,37 @@
         }
       }
     },
+    "StyledColorDef": {
+      "description": "A syntax color that may carry text attributes.\n\nA theme key is either a bare color (`[156, 220, 254]` or `\"Blue\"`) or an\nobject bundling that color with a modifier list\n(`{\"color\": [156, 220, 254], \"modifier\": [\"bold\"]}`). Bundling keeps the\ncolor and its attributes in one value, so nothing has to declare a separate\n`*_modifier` sibling key or map one to the other. A bare color carries no\nattributes.\n\n`Plain` must precede `Styled`: untagged deserialization tries variants in\norder, and only an object can match `Styled`, so an array/string settles on\n`Plain` and an object falls through to `Styled`.",
+      "anyOf": [
+        {
+          "description": "A color with no text attributes.",
+          "$ref": "#/$defs/ColorDef"
+        },
+        {
+          "description": "A color bundled with the text attributes to render it with.",
+          "type": "object",
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/ColorDef"
+            },
+            "modifier": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ModifierDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "color"
+          ]
+        }
+      ]
+    },
     "SearchColors": {
       "description": "Search result highlighting colors",
       "type": "object",
@@ -1744,7 +1775,7 @@
           "description": "Background color for jump labels (e.g. flash plugin labels).\nShould be visually distinct from `match_bg` so labels stand\nout against highlighted matches.  Default: bright magenta.",
           "anyOf": [
             {
-              "$ref": "#/$defs/ColorDef"
+              "$ref": "#/$defs/StyledColorDef"
             },
             {
               "type": "null"
@@ -1765,37 +1796,6 @@
           "default": null
         }
       }
-    },
-    "StyledColorDef": {
-      "description": "A syntax color that may carry text attributes.\n\nA theme key is either a bare color (`[156, 220, 254]` or `\"Blue\"`) or an\nobject bundling that color with a modifier list\n(`{\"color\": [156, 220, 254], \"modifier\": [\"bold\"]}`). Bundling keeps the\ncolor and its attributes in one value, so nothing has to declare a separate\n`*_modifier` sibling key or map one to the other. A bare color carries no\nattributes.\n\n`Plain` must precede `Styled`: untagged deserialization tries variants in\norder, and only an object can match `Styled`, so an array/string settles on\n`Plain` and an object falls through to `Styled`.",
-      "anyOf": [
-        {
-          "description": "A color with no text attributes.",
-          "$ref": "#/$defs/ColorDef"
-        },
-        {
-          "description": "A color bundled with the text attributes to render it with.",
-          "type": "object",
-          "properties": {
-            "color": {
-              "$ref": "#/$defs/ColorDef"
-            },
-            "modifier": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ModifierDef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "color"
-          ]
-        }
-      ]
     },
     "DiagnosticColors": {
       "description": "LSP diagnostic colors (errors, warnings, etc.)",

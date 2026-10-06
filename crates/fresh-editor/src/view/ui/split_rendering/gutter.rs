@@ -113,7 +113,7 @@ pub(super) fn render_left_margin(
         }
         push_span_with_map(line_spans, line_view_map, symbol.to_string(), style, None);
     } else if let Some(indicator) = lookup_key.and_then(|k| ctx.line_indicators.get(&k)) {
-        let mut style = Style::default().fg(indicator.color);
+        let mut style = Style::default().fg(indicator.color(ctx.theme));
         if let Some(bg) = indicator_bg {
             style = style.bg(bg);
         }

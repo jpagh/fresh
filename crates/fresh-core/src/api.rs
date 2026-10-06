@@ -4567,8 +4567,10 @@ pub enum PluginCommand {
         namespace: String,
         /// Symbol to display (e.g., "│", "●", "★")
         symbol: String,
-        /// Color as RGB tuple
-        color: (u8, u8, u8),
+        /// `[r, g, b]`, or a theme key such as `"ui.file_status_added_fg"` — see
+        /// [`crate::api::OverlayColorSpec`]. A key is re-resolved at paint time,
+        /// so the mark follows the theme; an RGB array freezes one palette.
+        color: OverlayColorSpec,
         /// Priority for display when multiple indicators exist (higher wins)
         priority: i32,
     },
@@ -4583,8 +4585,10 @@ pub enum PluginCommand {
         namespace: String,
         /// Symbol to display (e.g., "│", "●", "★")
         symbol: String,
-        /// Color as RGB tuple
-        color: (u8, u8, u8),
+        /// `[r, g, b]`, or a theme key such as `"ui.file_status_added_fg"` — see
+        /// [`crate::api::OverlayColorSpec`]. A key is re-resolved at paint time,
+        /// so the mark follows the theme; an RGB array freezes one palette.
+        color: OverlayColorSpec,
         /// Priority for display when multiple indicators exist (higher wins)
         priority: i32,
     },
