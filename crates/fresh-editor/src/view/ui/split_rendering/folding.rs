@@ -258,7 +258,11 @@ pub(super) fn diff_indicators_for_viewport(
     }
 
     let mut indicators = BTreeMap::new();
-    let indicator = LineIndicator::new_keyed("│", UNSAVED_CHANGE_FG, UNSAVED_CHANGE_PRIORITY);
+    // Heavy vertical (U+2503), matching the git-gutter mark in
+    // `plugins/git_gutter.ts`: the light `│` (U+2502) fills the same one-cell
+    // column but its stroke is a single pixel and disappears beside the line
+    // numbers.
+    let indicator = LineIndicator::new_keyed("┃", UNSAVED_CHANGE_FG, UNSAVED_CHANGE_PRIORITY);
 
     let bytes = state.buffer.slice_bytes(viewport_start..viewport_end);
     if bytes.is_empty() {

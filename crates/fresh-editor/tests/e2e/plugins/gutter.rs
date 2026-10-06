@@ -31,7 +31,7 @@ fn get_content_lines(screen: &str) -> Vec<&str> {
 fn has_gutter_indicator(screen: &str, symbol: &str) -> bool {
     for line in get_content_lines(screen) {
         // The indicator column is the very first character
-        // Only check the first char to avoid matching other │ characters
+        // Only check the first char, so a glyph later in the line cannot match
         if let Some(first_char) = line.chars().next() {
             if first_char.to_string() == symbol {
                 return true;
@@ -186,8 +186,8 @@ fn start_server(config: Config) {
     harness
         .wait_until(|h| {
             let screen = h.screen_to_string();
-            // Look for the modified indicator (│) in the gutter
-            has_gutter_indicator(&screen, "│")
+            // Look for the modified indicator (┃) in the gutter
+            has_gutter_indicator(&screen, "┃")
         })
         .unwrap();
 
@@ -234,10 +234,10 @@ fn start_server(config: Config) {
     .unwrap();
 
     open_file(&mut harness, &repo.path, "src/main.rs");
-    wait_for_indicator(&mut harness, "│");
+    wait_for_indicator(&mut harness, "┃");
 
     assert!(
-        has_gutter_indicator(&harness.screen_to_string(), "│"),
+        has_gutter_indicator(&harness.screen_to_string(), "┃"),
         "Git gutter indicator should appear even when diff.external and core.pager are configured"
     );
 }
@@ -297,7 +297,7 @@ fn test_git_gutter_updates_after_save() {
     // settled count rather than the pre-diff one, the later `count > initial`
     // could never be satisfied — a 180 s timeout rather than a failure.
     assert_eq!(
-        count_gutter_indicators(&harness.screen_to_string(), "│"),
+        count_gutter_indicators(&harness.screen_to_string(), "┃"),
         0,
         "a file matching HEAD should have no gutter indicators once settled\nScreen:\n{}",
         harness.screen_to_string()
@@ -324,7 +324,7 @@ fn test_git_gutter_updates_after_save() {
         let Some(row) = comment_row(h) else {
             return false;
         };
-        h.get_row_text(row).starts_with('│')
+        h.get_row_text(row).starts_with('┃')
             && h.get_cell_style(0, row)
                 .is_some_and(|s| s.fg == Some(Color::Rgb(80, 250, 123)))
     };
@@ -337,7 +337,7 @@ fn test_git_gutter_updates_after_save() {
     let added_line = harness.get_row_text(row);
     assert_eq!(
         added_line.chars().next(),
-        Some('│'),
+        Some('┃'),
         "Saved Git gutter indicator should remain in its original position"
     );
 
@@ -402,7 +402,7 @@ fn start_server(config: Config) {
         .wait_until(|h| {
             let screen = h.screen_to_string();
             // Should have multiple added line indicators
-            count_gutter_indicators(&screen, "│") >= 3
+            count_gutter_indicators(&screen, "┃") >= 3
         })
         .unwrap();
 
@@ -449,7 +449,7 @@ fn start_server(config: Config) {
     harness
         .wait_until(|h| {
             let screen = h.screen_to_string();
-            has_gutter_indicator(&screen, "▾") || has_gutter_indicator(&screen, "│")
+            has_gutter_indicator(&screen, "▾") || has_gutter_indicator(&screen, "┃")
         })
         .unwrap();
 
@@ -503,7 +503,7 @@ fn start_server(config: Config) {
     harness
         .wait_until(|h| {
             let screen = h.screen_to_string();
-            has_gutter_indicator(&screen, "│")
+            has_gutter_indicator(&screen, "┃")
         })
         .unwrap();
 
@@ -562,7 +562,7 @@ fn start_server(config: Config) {
     println!("After commit screen:\n{}", screen);
 
     // After commit, there should be no git indicators (file matches HEAD)
-    let indicators = count_gutter_indicators(&screen, "│");
+    let indicators = count_gutter_indicators(&screen, "┃");
     assert_eq!(
         indicators, 0,
         "Git gutter should have no indicators after changes are committed"
@@ -602,7 +602,7 @@ fn test_git_gutter_untracked_file() {
     println!("Untracked file screen:\n{}", screen);
 
     // Untracked files should have no git indicators
-    let indicators = count_gutter_indicators(&screen, "│");
+    let indicators = count_gutter_indicators(&screen, "┃");
     assert_eq!(
         indicators, 0,
         "Git gutter should have no indicators for untracked files"
@@ -637,7 +637,7 @@ fn test_buffer_modified_shows_on_edit() {
 
     // Initial state - no modifications
     let screen = harness.screen_to_string();
-    let initial_indicators = count_gutter_indicators(&screen, "│");
+    let initial_indicators = count_gutter_indicators(&screen, "┃");
 
     // Make an edit (but don't save)
     harness.type_text("// Unsaved change\n").unwrap();
@@ -650,7 +650,7 @@ fn test_buffer_modified_shows_on_edit() {
     let screen = harness.screen_to_string();
     println!("After edit screen:\n{}", screen);
 
-    let new_indicators = count_gutter_indicators(&screen, "│");
+    let new_indicators = count_gutter_indicators(&screen, "┃");
     assert!(
         new_indicators > initial_indicators,
         "Buffer modified should show indicator for unsaved changes"
@@ -686,7 +686,7 @@ fn test_buffer_modified_clears_after_save() {
     // Verify we have indicators before save
     harness.render().unwrap();
     let screen_before = harness.screen_to_string();
-    let indicators_before = count_gutter_indicators(&screen_before, "│");
+    let indicators_before = count_gutter_indicators(&screen_before, "┃");
 
     // Save the file
     save_file(&mut harness);
@@ -698,7 +698,7 @@ fn test_buffer_modified_clears_after_save() {
     let screen_after = harness.screen_to_string();
     println!("After save screen:\n{}", screen_after);
 
-    let indicators_after = count_gutter_indicators(&screen_after, "│");
+    let indicators_after = count_gutter_indicators(&screen_after, "┃");
 
     // After save, buffer modified indicators should be gone
     // (but git gutter might show indicators if git_gutter plugin is also loaded)
@@ -757,7 +757,7 @@ fn start_server(config: Config) {
     harness
         .wait_until(|h| {
             let screen = h.screen_to_string();
-            has_gutter_indicator(&screen, "│")
+            has_gutter_indicator(&screen, "┃")
         })
         .unwrap();
 
@@ -774,7 +774,7 @@ fn start_server(config: Config) {
     println!("Both plugins screen:\n{}", screen);
 
     // Should still have indicators (from either or both plugins)
-    let total_indicators = count_gutter_indicators(&screen, "│");
+    let total_indicators = count_gutter_indicators(&screen, "┃");
     assert!(
         total_indicators >= 1,
         "Should have indicators from both git changes and unsaved changes"
@@ -827,7 +827,7 @@ fn start_server(config: Config) {
     harness
         .wait_until(|h| {
             let screen = h.screen_to_string();
-            has_gutter_indicator(&screen, "│")
+            has_gutter_indicator(&screen, "┃")
         })
         .unwrap();
 
@@ -836,9 +836,9 @@ fn start_server(config: Config) {
 
     // The git gutter indicator (priority 10) should be visible,
     // not overridden by buffer_modified (priority 5)
-    // Both use │ symbol but with different colors
+    // Both use ┃ symbol but with different colors
     assert!(
-        has_gutter_indicator(&screen, "│"),
+        has_gutter_indicator(&screen, "┃"),
         "Higher priority indicator should be visible"
     );
 }
@@ -903,13 +903,13 @@ line 5: unchanged
     trigger_git_gutter_refresh(&mut harness);
 
     // Wait for git gutter indicator to appear on line 2 (0-indexed, which is line 3 in the file)
-    wait_for_indicator_on_line(&mut harness, "│", 2);
+    wait_for_indicator_on_line(&mut harness, "┃", 2);
 
     let screen = harness.screen_to_string();
     println!("=== After opening modified file ===\n{}", screen);
 
     // STEP 1: Verify git gutter shows indicator on the modified line (line 3, 0-indexed = line 2)
-    let indicator_lines = get_indicator_lines(&screen, "│");
+    let indicator_lines = get_indicator_lines(&screen, "┃");
     println!("Indicator lines after open: {:?}", indicator_lines);
 
     // STEP 2: Now make an in-editor change - insert a newline before line 3
@@ -933,22 +933,22 @@ line 5: unchanged
     harness.render().unwrap();
 
     // Wait for indicator to appear on the newly inserted line (now at index 2)
-    wait_for_indicator_on_line(&mut harness, "│", 2);
+    wait_for_indicator_on_line(&mut harness, "┃", 2);
 
     let screen_after_insert = harness.screen_to_string();
     println!("=== After inserting new line ===\n{}", screen_after_insert);
 
     // STEP 3: Verify indicators
-    let indicator_lines_after = get_indicator_lines(&screen_after_insert, "│");
+    let indicator_lines_after = get_indicator_lines(&screen_after_insert, "┃");
     println!("Indicator lines after insert: {:?}", indicator_lines_after);
 
     // After inserting a line before line 3:
     // - The newly inserted line (now line 3) should have an unsaved-changes indicator
     // - The originally modified line (now line 4) should still have a git indicator
-    // Both use │ symbol, so we should see indicators on at least 2 lines
+    // Both use ┃ symbol, so we should see indicators on at least 2 lines
 
     // Count total indicators - should have at least 2 (one for unsaved change, one for git change)
-    let indicator_count = count_gutter_indicators(&screen_after_insert, "│");
+    let indicator_count = count_gutter_indicators(&screen_after_insert, "┃");
     println!("Total indicators after insert: {}", indicator_count);
 
     // We expect indicators on:
@@ -962,12 +962,12 @@ line 5: unchanged
     trigger_git_gutter_refresh(&mut harness);
 
     // Wait for indicators to update (should still have git indicators after save)
-    wait_for_indicator(&mut harness, "│");
+    wait_for_indicator(&mut harness, "┃");
 
     let screen_after_save = harness.screen_to_string();
     println!("=== After save ===\n{}", screen_after_save);
 
-    let indicator_lines_after_save = get_indicator_lines(&screen_after_save, "│");
+    let indicator_lines_after_save = get_indicator_lines(&screen_after_save, "┃");
     println!(
         "Indicator lines after save: {:?}",
         indicator_lines_after_save
@@ -983,7 +983,7 @@ line 5: unchanged
     println!("\n=== Test Summary ===");
     println!(
         "Initial indicator count: {}",
-        get_indicator_lines(&screen, "│").len()
+        get_indicator_lines(&screen, "┃").len()
     );
     println!("After insert indicator count: {}", indicator_count);
     println!(
@@ -1030,7 +1030,7 @@ fn test_unsaved_changes_get_indicators() {
     open_file(&mut harness, &repo.path, "test.txt");
 
     let screen_before = harness.screen_to_string();
-    let indicators_before = count_gutter_indicators(&screen_before, "│");
+    let indicators_before = count_gutter_indicators(&screen_before, "┃");
     println!("=== Before edit ===\n{}", screen_before);
     println!("Indicators before edit: {}", indicators_before);
 
@@ -1041,10 +1041,10 @@ fn test_unsaved_changes_get_indicators() {
     harness.render().unwrap();
 
     // Wait for indicator to appear on the edited line (line 1, 0-indexed)
-    wait_for_indicator_on_line(&mut harness, "│", 1);
+    wait_for_indicator_on_line(&mut harness, "┃", 1);
 
     let screen_after = harness.screen_to_string();
-    let indicators_after = count_gutter_indicators(&screen_after, "│");
+    let indicators_after = count_gutter_indicators(&screen_after, "┃");
     println!("=== After edit ===\n{}", screen_after);
     println!("Indicators after edit: {}", indicators_after);
 
@@ -1060,10 +1060,10 @@ fn test_unsaved_changes_get_indicators() {
     save_file(&mut harness);
 
     // Wait for buffer modified indicators to clear after save
-    wait_for_no_indicators(&mut harness, "│");
+    wait_for_no_indicators(&mut harness, "┃");
 
     let screen_after_save = harness.screen_to_string();
-    let indicators_after_save = count_gutter_indicators(&screen_after_save, "│");
+    let indicators_after_save = count_gutter_indicators(&screen_after_save, "┃");
     println!("=== After save ===\n{}", screen_after_save);
     println!("Indicators after save: {}", indicators_after_save);
 
@@ -1111,10 +1111,10 @@ fn test_buffer_modified_clears_after_undo_on_same_line() {
     harness.send_key(KeyCode::End, KeyModifiers::NONE).unwrap();
     harness.type_text(" MOD").unwrap();
     harness.render().unwrap();
-    wait_for_indicator_on_line(&mut harness, "│", 0);
+    wait_for_indicator_on_line(&mut harness, "┃", 0);
 
     let screen_after = harness.screen_to_string();
-    let indicators_after = get_indicator_lines(&screen_after, "│");
+    let indicators_after = get_indicator_lines(&screen_after, "┃");
     println!("=== After edit ===\n{}", screen_after);
     assert_eq!(
         indicators_after,
@@ -1130,10 +1130,10 @@ fn test_buffer_modified_clears_after_undo_on_same_line() {
             .unwrap();
     }
     harness.render().unwrap();
-    wait_for_no_indicators(&mut harness, "│");
+    wait_for_no_indicators(&mut harness, "┃");
 
     let screen_after_undo = harness.screen_to_string();
-    let indicators_after_undo = get_indicator_lines(&screen_after_undo, "│");
+    let indicators_after_undo = get_indicator_lines(&screen_after_undo, "┃");
     println!("=== After undo ===\n{}", screen_after_undo);
     assert!(
         indicators_after_undo.is_empty(),
@@ -1178,10 +1178,10 @@ fn test_buffer_modified_single_line_in_multi_line_file() {
     harness.send_key(KeyCode::End, KeyModifiers::NONE).unwrap();
     harness.type_text(" MOD").unwrap();
     harness.render().unwrap();
-    wait_for_indicator_on_line(&mut harness, "│", 9);
+    wait_for_indicator_on_line(&mut harness, "┃", 9);
 
     let screen_after = harness.screen_to_string();
-    let indicators_after = get_indicator_lines(&screen_after, "│");
+    let indicators_after = get_indicator_lines(&screen_after, "┃");
     println!("=== After edit (multi-line) ===\n{}", screen_after);
     assert_eq!(
         indicators_after,
@@ -1197,10 +1197,10 @@ fn test_buffer_modified_single_line_in_multi_line_file() {
             .unwrap();
     }
     harness.render().unwrap();
-    wait_for_no_indicators(&mut harness, "│");
+    wait_for_no_indicators(&mut harness, "┃");
 
     let screen_after_undo = harness.screen_to_string();
-    let indicators_after_undo = get_indicator_lines(&screen_after_undo, "│");
+    let indicators_after_undo = get_indicator_lines(&screen_after_undo, "┃");
     println!("=== After undo (multi-line) ===\n{}", screen_after_undo);
     assert!(
         indicators_after_undo.is_empty(),
@@ -1245,10 +1245,10 @@ fn test_buffer_modified_newline_insert_only_marks_affected_lines() {
         .send_key(KeyCode::Enter, KeyModifiers::NONE)
         .unwrap();
     harness.render().unwrap();
-    wait_for_indicator(&mut harness, "│");
+    wait_for_indicator(&mut harness, "┃");
 
     let screen = harness.screen_to_string();
-    let indicators = get_indicator_lines(&screen, "│");
+    let indicators = get_indicator_lines(&screen, "┃");
     println!("=== After inserting newline ===\n{}", screen);
     println!("Indicator lines: {:?}", indicators);
 
@@ -1306,10 +1306,10 @@ fn test_buffer_modified_clears_after_manual_delete_restores_content() {
     harness.send_key(KeyCode::End, KeyModifiers::NONE).unwrap();
     harness.type_text(" ADDED").unwrap();
     harness.render().unwrap();
-    wait_for_indicator_on_line(&mut harness, "│", 2);
+    wait_for_indicator_on_line(&mut harness, "┃", 2);
 
     let screen_after_add = harness.screen_to_string();
-    let indicators_after_add = get_indicator_lines(&screen_after_add, "│");
+    let indicators_after_add = get_indicator_lines(&screen_after_add, "┃");
     println!("=== After adding text ===\n{}", screen_after_add);
     assert!(
         indicators_after_add.contains(&2),
@@ -1324,10 +1324,10 @@ fn test_buffer_modified_clears_after_manual_delete_restores_content() {
             .unwrap();
     }
     harness.render().unwrap();
-    wait_for_no_indicators(&mut harness, "│");
+    wait_for_no_indicators(&mut harness, "┃");
 
     let screen_after_delete = harness.screen_to_string();
-    let indicators_after_delete = get_indicator_lines(&screen_after_delete, "│");
+    let indicators_after_delete = get_indicator_lines(&screen_after_delete, "┃");
     println!(
         "=== After manually deleting text ===\n{}",
         screen_after_delete
@@ -1387,10 +1387,10 @@ fn test_buffer_modified_clears_after_paste_restores_content() {
         .send_key(KeyCode::Char('x'), KeyModifiers::CONTROL)
         .unwrap();
     harness.render().unwrap();
-    wait_for_indicator(&mut harness, "│");
+    wait_for_indicator(&mut harness, "┃");
 
     let screen_after_cut = harness.screen_to_string();
-    let indicators_after_cut = get_indicator_lines(&screen_after_cut, "│");
+    let indicators_after_cut = get_indicator_lines(&screen_after_cut, "┃");
     println!("=== After cutting 'world' ===\n{}", screen_after_cut);
     assert!(
         !indicators_after_cut.is_empty(),
@@ -1402,10 +1402,10 @@ fn test_buffer_modified_clears_after_paste_restores_content() {
         .send_key(KeyCode::Char('v'), KeyModifiers::CONTROL)
         .unwrap();
     harness.render().unwrap();
-    wait_for_no_indicators(&mut harness, "│");
+    wait_for_no_indicators(&mut harness, "┃");
 
     let screen_after_paste = harness.screen_to_string();
-    let indicators_after_paste = get_indicator_lines(&screen_after_paste, "│");
+    let indicators_after_paste = get_indicator_lines(&screen_after_paste, "┃");
     println!("=== After pasting 'world' back ===\n{}", screen_after_paste);
     assert!(
         indicators_after_paste.is_empty(),
@@ -1448,10 +1448,10 @@ fn test_indicator_line_shifting() {
 
     open_file(&mut harness, &repo.path, "test.txt");
     trigger_git_gutter_refresh(&mut harness);
-    wait_for_indicator(&mut harness, "│");
+    wait_for_indicator(&mut harness, "┃");
 
     let screen_initial = harness.screen_to_string();
-    let lines_initial = get_indicator_lines(&screen_initial, "│");
+    let lines_initial = get_indicator_lines(&screen_initial, "┃");
     println!("=== Initial state ===\n{}", screen_initial);
     println!("Initial indicator lines: {:?}", lines_initial);
 
@@ -1473,10 +1473,10 @@ fn test_indicator_line_shifting() {
     save_file(&mut harness);
     trigger_git_gutter_refresh(&mut harness);
     // Wait for indicators to appear (the inserted lines should show as added)
-    wait_for_indicator(&mut harness, "│");
+    wait_for_indicator(&mut harness, "┃");
 
     let screen_after = harness.screen_to_string();
-    let lines_after = get_indicator_lines(&screen_after, "│");
+    let lines_after = get_indicator_lines(&screen_after, "┃");
     println!(
         "=== After inserting 2 lines at beginning ===\n{}",
         screen_after
@@ -1578,7 +1578,7 @@ fn test_git_gutter_marks_off_screen_hunks_on_scrollbar() {
 
     let screen = harness.screen_to_string();
     assert_eq!(
-        count_gutter_indicators(&screen, "│"),
+        count_gutter_indicators(&screen, "┃"),
         0,
         "the changed lines are all below the first screenful, so no gutter \
          glyph should be visible:\n{screen}"
@@ -1693,7 +1693,7 @@ fn test_git_gutter_refreshes_after_external_git_checkout() {
     // hunks — the status line proves the pass completed.
     harness.wait_for_screen_contains("0 change(s)").unwrap();
     assert!(
-        !has_gutter_indicator(&harness.screen_to_string(), "│"),
+        !has_gutter_indicator(&harness.screen_to_string(), "┃"),
         "a file matching HEAD should have no gutter indicators"
     );
 
@@ -1722,7 +1722,7 @@ fn test_git_gutter_refreshes_after_external_git_checkout() {
 
     // The reverted content differs from HEAD on the two rewritten lines, so
     // the gutter must show modified indicators without any user action...
-    wait_for_indicator(&mut harness, "│");
+    wait_for_indicator(&mut harness, "┃");
 
     // ...and the same hunk must be marked on the scrollbar.
     harness

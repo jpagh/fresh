@@ -347,7 +347,7 @@ pub(crate) fn decoration_context(
                     .unwrap_or(byte_offset)
             });
 
-    // Merge native diff-since-saved indicators (cornflower blue │ for unsaved edits).
+    // Merge native diff-since-saved indicators (the theme-keyed ┃ bar for unsaved edits).
     // These have priority 5, lower than git gutter (10).
     let diff_indicators = diff_indicators_for_viewport(state, viewport_start, viewport_end);
     for (key, diff_ind) in diff_indicators {
