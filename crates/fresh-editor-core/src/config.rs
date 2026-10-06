@@ -9607,8 +9607,7 @@ mod tests {
         );
 
         // `#rgb` shorthand, because a palette is a thing people paste.
-        let shorthand: TerminalPaletteConfig =
-            serde_json::from_str(r##"{"bg": "#eee"}"##).unwrap();
+        let shorthand: TerminalPaletteConfig = serde_json::from_str(r##"{"bg": "#eee"}"##).unwrap();
         assert_eq!(
             shorthand
                 .to_palette()

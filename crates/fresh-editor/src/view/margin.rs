@@ -58,10 +58,17 @@ impl LineIndicator {
         theme_key: impl Into<String>,
         priority: i32,
     ) -> Self {
-        Self::from_spec(symbol, OverlayColorSpec::ThemeKey(theme_key.into()), priority)
+        Self::from_spec(
+            symbol,
+            OverlayColorSpec::ThemeKey(theme_key.into()),
+            priority,
+        )
     }
 
-    fn from_spec(symbol: impl Into<String>, color: OverlayColorSpec, priority: i32) -> Self {
+    /// Create a line indicator from an already-built colour spec, so a caller
+    /// that received one (the plugin command, say) does not have to flatten it
+    /// to a colour and lose the theme key.
+    pub fn from_spec(symbol: impl Into<String>, color: OverlayColorSpec, priority: i32) -> Self {
         Self {
             symbol: symbol.into(),
             color,

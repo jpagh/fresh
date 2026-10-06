@@ -552,11 +552,7 @@ pub fn repaired_fg(fg: Color, bg: Color) -> Option<Color> {
 ///
 /// The repair is an absolute palette index of 16 or more, chosen against the
 /// *declared* background, so it stays correct whatever the terminal paints.
-pub fn repaired_fg_with_palette(
-    fg: Color,
-    bg: Color,
-    palette: &TerminalPalette,
-) -> Option<Color> {
+pub fn repaired_fg_with_palette(fg: Color, bg: Color, palette: &TerminalPalette) -> Option<Color> {
     let fg_rgb = palette.painted(fg, PaletteRole::Foreground)?;
     let bg_rgb = palette.painted(bg, PaletteRole::Background)?;
     find_readable_256_color_near(fg_rgb, bg_rgb).map(Color::Indexed)
@@ -819,12 +815,8 @@ fn enforce_minimum_contrast_with_palette(
     palette: &TerminalPalette,
 ) {
     for cell in buffer.content.iter_mut() {
-        let terminal_owned = palette
-            .resolve(cell.fg, PaletteRole::Foreground)
-            .is_some()
-            || palette
-                .resolve(cell.bg, PaletteRole::Background)
-                .is_some();
+        let terminal_owned = palette.resolve(cell.fg, PaletteRole::Foreground).is_some()
+            || palette.resolve(cell.bg, PaletteRole::Background).is_some();
         if !terminal_owned {
             continue;
         }
@@ -1357,9 +1349,8 @@ mod tests {
             "no declaration, so the pair is unknowable and nothing is repaired"
         );
 
-        let repaired = repaired_fg_with_palette(fg, bg, &palette).unwrap_or_else(|| {
-            panic!("a pair shipping at {:.2}:1 has to be repaired", shipped)
-        });
+        let repaired = repaired_fg_with_palette(fg, bg, &palette)
+            .unwrap_or_else(|| panic!("a pair shipping at {:.2}:1 has to be repaired", shipped));
 
         let ratio = contrast_ratio(
             palette.painted(repaired, PaletteRole::Foreground).unwrap(),

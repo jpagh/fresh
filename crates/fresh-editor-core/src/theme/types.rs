@@ -1586,22 +1586,34 @@ impl From<Theme> for ThemeFile {
                 tab_hover_bg: Some(theme.tab_hover_bg.into()),
                 menu_bg: Some(theme.menu_bg.into()),
                 menu_fg: Some(theme.menu_fg.into()),
-                menu_active_bg: Some(StyledColorDef::from_parts(theme.menu_active_bg, theme.menu_active_modifier)),
+                menu_active_bg: Some(StyledColorDef::from_parts(
+                    theme.menu_active_bg,
+                    theme.menu_active_modifier,
+                )),
                 menu_active_fg: Some(theme.menu_active_fg.into()),
                 menu_dropdown_bg: Some(theme.menu_dropdown_bg.into()),
                 menu_dropdown_fg: Some(theme.menu_dropdown_fg.into()),
-                menu_highlight_bg: Some(StyledColorDef::from_parts(theme.menu_highlight_bg, theme.menu_highlight_modifier)),
+                menu_highlight_bg: Some(StyledColorDef::from_parts(
+                    theme.menu_highlight_bg,
+                    theme.menu_highlight_modifier,
+                )),
                 menu_highlight_fg: Some(theme.menu_highlight_fg.into()),
                 menu_border_fg: Some(theme.menu_border_fg.into()),
                 menu_separator_fg: Some(theme.menu_separator_fg.into()),
-                menu_hover_bg: Some(StyledColorDef::from_parts(theme.menu_hover_bg, theme.menu_hover_modifier)),
+                menu_hover_bg: Some(StyledColorDef::from_parts(
+                    theme.menu_hover_bg,
+                    theme.menu_hover_modifier,
+                )),
                 menu_hover_fg: Some(theme.menu_hover_fg.into()),
                 menu_disabled_fg: Some(theme.menu_disabled_fg.into()),
                 menu_disabled_bg: Some(theme.menu_disabled_bg.into()),
                 status_bar_fg: Some(theme.status_bar_fg.into()),
                 status_bar_bg: Some(theme.status_bar_bg.into()),
                 status_palette_fg: Some(theme.status_palette_fg.into()),
-                status_palette_bg: Some(StyledColorDef::from_parts(theme.status_palette_bg, theme.status_palette_modifier)),
+                status_palette_bg: Some(StyledColorDef::from_parts(
+                    theme.status_palette_bg,
+                    theme.status_palette_modifier,
+                )),
                 status_separator_fg: Some(theme.status_separator_fg.into()),
                 status_separator_bg: Some(theme.status_separator_bg.into()),
                 status_lsp_on_fg: Some(theme.status_lsp_on_fg.into()),
@@ -1611,16 +1623,28 @@ impl From<Theme> for ThemeFile {
                 prompt_fg: Some(theme.prompt_fg.into()),
                 prompt_bg: Some(theme.prompt_bg.into()),
                 prompt_selection_fg: Some(theme.prompt_selection_fg.into()),
-                prompt_selection_bg: Some(StyledColorDef::from_parts(theme.prompt_selection_bg, theme.prompt_selection_modifier)),
+                prompt_selection_bg: Some(StyledColorDef::from_parts(
+                    theme.prompt_selection_bg,
+                    theme.prompt_selection_modifier,
+                )),
                 popup_border_fg: Some(theme.popup_border_fg.into()),
                 popup_bg: Some(theme.popup_bg.into()),
-                popup_selection_bg: Some(StyledColorDef::from_parts(theme.popup_selection_bg, theme.popup_selection_modifier)),
+                popup_selection_bg: Some(StyledColorDef::from_parts(
+                    theme.popup_selection_bg,
+                    theme.popup_selection_modifier,
+                )),
                 popup_selection_fg: Some(theme.popup_selection_fg.into()),
                 popup_text_fg: Some(theme.popup_text_fg.into()),
-                text_input_selection_bg: Some(StyledColorDef::from_parts(theme.text_input_selection_bg, theme.text_input_selection_modifier)),
+                text_input_selection_bg: Some(StyledColorDef::from_parts(
+                    theme.text_input_selection_bg,
+                    theme.text_input_selection_modifier,
+                )),
                 suggestion_bg: Some(theme.suggestion_bg.into()),
                 suggestion_fg: Some(theme.suggestion_fg.into()),
-                suggestion_selected_bg: Some(StyledColorDef::from_parts(theme.suggestion_selected_bg, theme.suggestion_selected_modifier)),
+                suggestion_selected_bg: Some(StyledColorDef::from_parts(
+                    theme.suggestion_selected_bg,
+                    theme.suggestion_selected_modifier,
+                )),
                 help_bg: Some(theme.help_bg.into()),
                 help_fg: Some(theme.help_fg.into()),
                 help_key_fg: Some(theme.help_key_fg.into()),
@@ -1636,7 +1660,10 @@ impl From<Theme> for ThemeFile {
                 scrollbar_thumb_hover_fg: Some(theme.scrollbar_thumb_hover_fg.into()),
                 compose_margin_bg: Some(theme.compose_margin_bg.into()),
                 blame_header_fg: Some(theme.blame_header_fg.into()),
-                blame_header_bg: Some(StyledColorDef::from_parts(theme.blame_header_bg, theme.blame_header_modifier)),
+                blame_header_bg: Some(StyledColorDef::from_parts(
+                    theme.blame_header_bg,
+                    theme.blame_header_modifier,
+                )),
                 semantic_highlight_bg: Some(theme.semantic_highlight_bg.into()),
                 semantic_highlight_modifier: if theme.semantic_highlight_modifier.is_empty() {
                     None
@@ -1661,7 +1688,10 @@ impl From<Theme> for ThemeFile {
                 tab_drop_zone_bg: Some(theme.tab_drop_zone_bg.into()),
                 tab_drop_zone_border: Some(theme.tab_drop_zone_border.into()),
                 list_drop_target_bg: Some(theme.list_drop_target_bg.into()),
-                settings_selected_bg: Some(StyledColorDef::from_parts(theme.settings_selected_bg, theme.settings_selected_modifier)),
+                settings_selected_bg: Some(StyledColorDef::from_parts(
+                    theme.settings_selected_bg,
+                    theme.settings_selected_modifier,
+                )),
                 settings_selected_fg: Some(theme.settings_selected_fg.into()),
                 file_status_added_fg: Some(theme.file_status_added_fg.into()),
                 file_status_modified_fg: Some(theme.file_status_modified_fg.into()),
@@ -1678,7 +1708,10 @@ impl From<Theme> for ThemeFile {
                     theme.search_current_match_fg,
                     theme.search_current_match_modifier,
                 )),
-                label_bg: Some(StyledColorDef::from_parts(theme.search_label_bg, theme.search_label_modifier)),
+                label_bg: Some(StyledColorDef::from_parts(
+                    theme.search_label_bg,
+                    theme.search_label_modifier,
+                )),
                 label_fg: Some(theme.search_label_fg.into()),
             },
             diagnostic: DiagnosticColors {
@@ -3784,8 +3817,16 @@ mod tests {
             ("ui", "menu_hover_fg", "menu_hover_bg"),
             ("ui", "help_fg", "help_bg"),
             ("ui", "help_key_fg", ""),
-            ("ui", "status_error_indicator_fg", "status_error_indicator_bg"),
-            ("ui", "status_warning_indicator_fg", "status_warning_indicator_bg"),
+            (
+                "ui",
+                "status_error_indicator_fg",
+                "status_error_indicator_bg",
+            ),
+            (
+                "ui",
+                "status_warning_indicator_fg",
+                "status_warning_indicator_bg",
+            ),
             ("ui", "file_status_added_fg", ""),
             ("ui", "file_status_modified_fg", ""),
             ("ui", "file_status_deleted_fg", ""),
@@ -3845,9 +3886,7 @@ mod tests {
 
             for (section, fg_key, bg_key) in TEXT_PAIRS {
                 let section_json = raw.get(*section);
-                let fg = section_json
-                    .and_then(|s| s.get(*fg_key))
-                    .and_then(color_of);
+                let fg = section_json.and_then(|s| s.get(*fg_key)).and_then(color_of);
                 let bg = if bg_key.is_empty() {
                     editor_bg.and_then(color_of)
                 } else {

@@ -6212,18 +6212,25 @@ impl JsEditorApi {
     // === Line Indicators ===
 
     /// Set a line indicator in the gutter
+    ///
+    /// `color` is an `[r, g, b]` array or a theme key such as
+    /// `"ui.file_status_added_fg"`. Prefer the key: it is re-resolved at paint
+    /// time, so the mark follows the user's palette — including a terminal
+    /// theme that changes with the system at dusk — where an RGB array freezes
+    /// one palette's answer forever.
     #[allow(clippy::too_many_arguments)]
-    pub fn set_line_indicator(
+    pub fn set_line_indicator<'js>(
         &self,
         buffer_id: u32,
         line: u32,
         namespace: String,
         symbol: String,
-        r: u8,
-        g: u8,
-        b: u8,
+        #[plugin_api(ts_type = "[number, number, number] | string")] color: rquickjs::Value<'js>,
         priority: i32,
     ) -> bool {
+        let Ok(color) = rquickjs_serde::from_value(color) else {
+            return false;
+        };
         // Track namespace for cleanup on unload
         self.plugin_tracked_state
             .borrow_mut()
@@ -6238,7 +6245,7 @@ impl JsEditorApi {
                 line: line as usize,
                 namespace,
                 symbol,
-                color: (r, g, b),
+                color,
                 priority,
             })
             .is_ok()
@@ -6246,17 +6253,18 @@ impl JsEditorApi {
 
     /// Batch set line indicators in the gutter
     #[allow(clippy::too_many_arguments)]
-    pub fn set_line_indicators(
+    pub fn set_line_indicators<'js>(
         &self,
         buffer_id: u32,
         lines: Vec<u32>,
         namespace: String,
         symbol: String,
-        r: u8,
-        g: u8,
-        b: u8,
+        #[plugin_api(ts_type = "[number, number, number] | string")] color: rquickjs::Value<'js>,
         priority: i32,
     ) -> bool {
+        let Ok(color) = rquickjs_serde::from_value(color) else {
+            return false;
+        };
         // Track namespace for cleanup on unload
         self.plugin_tracked_state
             .borrow_mut()
@@ -6271,7 +6279,7 @@ impl JsEditorApi {
                 lines: lines.into_iter().map(|l| l as usize).collect(),
                 namespace,
                 symbol,
-                color: (r, g, b),
+                color,
                 priority,
             })
             .is_ok()
@@ -12151,13 +12159,15 @@ mod tests {
 
     #[test]
     fn test_api_set_line_indicator() {
+        use fresh_core::api::OverlayColorSpec;
+
         let (mut backend, rx) = create_test_backend();
 
         backend
             .execute_js(
                 r#"
             const editor = getEditor();
-            editor.setLineIndicator(1, 5, "test-ns", "●", 255, 0, 0, 10);
+            editor.setLineIndicator(1, 5, "test-ns", "●", [255, 0, 0], 10);
         "#,
                 "test.js",
             )
@@ -12177,11 +12187,64 @@ mod tests {
                 assert_eq!(line, 5);
                 assert_eq!(namespace, "test-ns");
                 assert_eq!(symbol, "●");
-                assert_eq!(color, (255, 0, 0));
+                assert_eq!(color, OverlayColorSpec::Rgb(255, 0, 0));
                 assert_eq!(priority, 10);
             }
             _ => panic!("Expected SetLineIndicator, got {:?}", cmd),
         }
+    }
+
+    /// The point of the spec: a theme key has to survive all the way to the
+    /// gutter, not be resolved into a colour on the way. If the bridge flattened
+    /// it here, the mark would freeze one palette's answer and stop following a
+    /// theme that changes under a running editor.
+    #[test]
+    fn test_api_set_line_indicator_accepts_a_theme_key() {
+        use fresh_core::api::OverlayColorSpec;
+
+        let (mut backend, rx) = create_test_backend();
+
+        backend
+            .execute_js(
+                r#"
+            const editor = getEditor();
+            editor.setLineIndicator(1, 5, "git-gutter", "│", "ui.file_status_added_fg", 10);
+        "#,
+                "test.js",
+            )
+            .unwrap();
+
+        let cmd = rx.try_recv().unwrap();
+        match cmd {
+            PluginCommand::SetLineIndicator { color, .. } => assert_eq!(
+                color,
+                OverlayColorSpec::ThemeKey("ui.file_status_added_fg".to_owned()),
+                "a theme key must reach the gutter unresolved"
+            ),
+            _ => panic!("Expected SetLineIndicator, got {:?}", cmd),
+        }
+    }
+
+    /// A malformed colour is refused rather than silently painted as something
+    /// arbitrary — the indicator is dropped and the plugin sees `false`.
+    #[test]
+    fn test_api_set_line_indicator_rejects_an_unusable_colour() {
+        let (mut backend, rx) = create_test_backend();
+
+        backend
+            .execute_js(
+                r#"
+            const editor = getEditor();
+            globalThis.ok = editor.setLineIndicator(1, 5, "git-gutter", "│", 42, 10);
+        "#,
+                "test.js",
+            )
+            .unwrap();
+
+        assert!(
+            rx.try_recv().is_err(),
+            "a non-colour must not produce a SetLineIndicator command"
+        );
     }
 
     #[test]
