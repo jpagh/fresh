@@ -12,6 +12,7 @@ use crossterm::{
     terminal::disable_raw_mode,
     ExecutableCommand,
 };
+use fresh::services::terminal_modes::{modify_other_keys_request, sequences};
 use std::{
     fmt::Arguments,
     io::{self, stdout, Write},
@@ -34,10 +35,20 @@ fn main() -> io::Result<()> {
         )
     )?;
 
+    // The push above is a no-op under tmux, so request the same fallback the
+    // editor does — otherwise this tool reports `Ctrl+K` for `Ctrl+Shift+K` and
+    // sends anyone debugging a keybinding in the wrong direction.
+    if let Some(request) = modify_other_keys_request() {
+        let mut out = stdout();
+        out.write_all(request)?;
+        out.flush()?;
+    }
+
     let result = run_event_loop();
 
     // Clean up
     let _ = crossterm::execute!(stdout(), crossterm::event::DisableMouseCapture);
+    let _ = stdout().write_all(sequences::RESET_MODIFY_OTHER_KEYS);
     let _ = stdout().execute(PopKeyboardEnhancementFlags);
     disable_raw_mode()?;
 
