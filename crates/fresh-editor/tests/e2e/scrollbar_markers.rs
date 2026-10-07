@@ -317,9 +317,13 @@ fn range_scoped_publish_preserves_markers_outside_the_range() {
 // Unsaved changes
 // =============================================================================
 
-/// The colour the editor paints its own unsaved-change marks in — the same
-/// cornflower blue as the gutter bar for the same change.
-const UNSAVED_BLUE: Color = Color::Rgb(100, 149, 237);
+/// The colour the editor paints its own unsaved-change marks in: the theme's
+/// `ui.file_status_modified_fg` key resolved for the harness's active theme —
+/// the same colour as the gutter bar for the same change. Resolving it here
+/// keeps the expectation tied to the theme instead of one frozen palette.
+fn unsaved_fg(harness: &EditorTestHarness) -> Color {
+    harness.editor().theme().file_status_modified_fg
+}
 
 /// The gutter can only speak for the lines on screen. Typing near the top of a
 /// long file and scrolling away leaves no trace in the gutter — the scrollbar
@@ -341,8 +345,8 @@ fn unsaved_edits_are_marked_on_the_scrollbar_even_when_scrolled_away() {
     let rows = marker_rows(&harness);
     assert_eq!(
         rows.iter().map(|(_, fg)| *fg).collect::<Vec<_>>(),
-        vec![Some(UNSAVED_BLUE)],
-        "the edit should put one blue mark on the track, saw {rows:?}"
+        vec![Some(unsaved_fg(&harness))],
+        "the edit should put one unsaved-change mark on the track, saw {rows:?}"
     );
     let (first, last) = harness.content_area_rows();
     let position = (rows[0].0 as f64 - first as f64) / (last - first + 1) as f64;
@@ -368,7 +372,7 @@ fn unsaved_edits_are_marked_on_the_scrollbar_even_when_scrolled_away() {
     let rows = marker_rows(&harness);
     assert_eq!(
         rows.iter().map(|(_, fg)| *fg).collect::<Vec<_>>(),
-        vec![Some(UNSAVED_BLUE)],
+        vec![Some(unsaved_fg(&harness))],
         "the mark must survive scrolling the edit off screen, saw {rows:?}"
     );
 }
@@ -457,7 +461,7 @@ fn unsaved_marks_work_on_the_logical_line_basis() {
     let rows = marker_rows(&harness);
     assert_eq!(
         rows.iter().map(|(_, fg)| *fg).collect::<Vec<_>>(),
-        vec![Some(UNSAVED_BLUE)],
+        vec![Some(unsaved_fg(&harness))],
         "the edit should be marked on a logical-line-basis scrollbar too, saw {rows:?}"
     );
 }
