@@ -314,6 +314,7 @@ fn test_git_gutter_updates_after_save() {
     // column 0. That holds only once the post-save diff has landed, and a
     // genuinely wrong result still fails loudly through the wait's periodic
     // screen dumps.
+    let added_fg = harness.editor().theme().file_status_added_fg;
     let comment_row = |h: &EditorTestHarness| -> Option<u16> {
         h.screen_to_string()
             .lines()
@@ -326,7 +327,7 @@ fn test_git_gutter_updates_after_save() {
         };
         h.get_row_text(row).starts_with('┃')
             && h.get_cell_style(0, row)
-                .is_some_and(|s| s.fg == Some(Color::Rgb(80, 250, 123)))
+                .is_some_and(|s| s.fg == Some(added_fg))
     };
     harness.wait_until(indicator_landed).unwrap();
 
@@ -346,7 +347,7 @@ fn test_git_gutter_updates_after_save() {
         .expect("Git gutter indicator cell should have a style");
     assert_eq!(
         indicator_style.fg,
-        Some(Color::Rgb(80, 250, 123)),
+        Some(added_fg),
         "Saved Git gutter indicator should turn green"
     );
 }
@@ -1585,12 +1586,18 @@ fn test_git_gutter_marks_off_screen_hunks_on_scrollbar() {
     );
 
     let rows = scrollbar_marker_rows(&harness);
-    let added = first_marker_row(&rows, Color::Rgb(80, 250, 123))
-        .unwrap_or_else(|| panic!("the inserted lines should mark the track green; saw {rows:?}"));
-    let deleted = first_marker_row(&rows, Color::Rgb(255, 85, 85))
-        .unwrap_or_else(|| panic!("the deletion should mark the track red; saw {rows:?}"));
-    let modified = first_marker_row(&rows, Color::Rgb(255, 184, 108))
-        .unwrap_or_else(|| panic!("the rewritten line should mark the track orange; saw {rows:?}"));
+    let theme = harness.editor().theme();
+    let added = first_marker_row(&rows, theme.file_status_added_fg).unwrap_or_else(|| {
+        panic!(
+            "the inserted lines should mark the track with `ui.file_status_added_fg`; saw {rows:?}"
+        )
+    });
+    let deleted = first_marker_row(&rows, theme.file_status_deleted_fg).unwrap_or_else(|| {
+        panic!("the deletion should mark the track with `ui.file_status_deleted_fg`; saw {rows:?}")
+    });
+    let modified = first_marker_row(&rows, theme.file_status_modified_fg).unwrap_or_else(|| {
+        panic!("the rewritten line should mark the track with `ui.file_status_modified_fg`; saw {rows:?}")
+    });
 
     // Marks land proportionally to where their hunk sits in the file, so they
     // appear in the same order down the track as the hunks do down the file.
@@ -1646,8 +1653,9 @@ fn test_git_gutter_scrollbar_marks_appear_after_save() {
     let rows = scrollbar_marker_rows(&harness);
     assert_eq!(
         rows.first().map(|(_, fg)| *fg),
-        Some(Some(Color::Rgb(80, 250, 123))),
-        "the inserted line is an addition, so its mark is green; saw {rows:?}"
+        Some(Some(harness.editor().theme().file_status_added_fg)),
+        "the inserted line is an addition, so its mark is the added colour \
+         (`ui.file_status_added_fg`); saw {rows:?}"
     );
 }
 
@@ -1732,8 +1740,8 @@ fn test_git_gutter_refreshes_after_external_git_checkout() {
     let rows = scrollbar_marker_rows(&harness);
     assert_eq!(
         rows.first().map(|(_, fg)| *fg),
-        Some(Some(Color::Rgb(255, 184, 108))),
+        Some(Some(harness.editor().theme().file_status_modified_fg)),
         "the reset lines differ from HEAD as modifications, so their mark is \
-         orange; saw {rows:?}"
+         the modified colour (`ui.file_status_modified_fg`); saw {rows:?}"
     );
 }

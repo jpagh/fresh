@@ -5,9 +5,13 @@ use crate::common::harness::EditorTestHarness;
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::style::Color;
 
-/// Cornflower blue: the unsaved-change decoration on both the gutter and the
-/// scrollbar.
-const UNSAVED_BLUE: Color = Color::Rgb(100, 149, 237);
+/// The unsaved-change decoration's colour, resolved from the theme key the
+/// editor paints with (`ui.file_status_modified_fg`) for the harness's active
+/// theme. Resolving it here rather than freezing an RGB keeps the expectation
+/// honest when the theme — or the colour it maps the key to — changes.
+fn unsaved_fg(harness: &EditorTestHarness) -> Color {
+    harness.editor().theme().file_status_modified_fg
+}
 
 fn content(lines: usize) -> String {
     (0..lines)
@@ -25,7 +29,7 @@ fn barred_rows(harness: &EditorTestHarness) -> Vec<usize> {
                 && harness
                     .get_cell_style(0, *row as u16)
                     .and_then(|s| s.fg)
-                    .is_some_and(|fg| fg == UNSAVED_BLUE)
+                    .is_some_and(|fg| fg == unsaved_fg(harness))
         })
         .collect()
 }
