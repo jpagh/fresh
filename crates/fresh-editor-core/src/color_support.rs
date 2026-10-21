@@ -534,21 +534,20 @@ fn find_readable_256_color(fg_idx: u8, bg_rgb: (u8, u8, u8)) -> u8 {
     let mut best_idx = fg_idx;
     let mut best_distance = u32::MAX;
 
-    // Determine if we need to go lighter or darker than the background
-    let need_lighter = bg_lum < 0.5;
-
-    // Search color cube (16-231) and grayscale ramp (232-255)
+    // Search color cube (16-231) and grayscale ramp (232-255), in *both*
+    // directions.
+    //
+    // An earlier version skipped candidates on the far side of 0.5 luminance,
+    // reading as "a dark background means light text". That is right at the ends
+    // of the range and exactly wrong in the middle: on a background at ~0.42
+    // luminance no lighter colour clears the bar at all (white tops out at
+    // 1.9:1) while black clears 8:1, so the scan concluded that nothing
+    // qualified and returned the unreadable foreground unchanged. The ratio
+    // computation below already handles either direction, so the skip was only
+    // ever an optimization — and a wrong one.
     for candidate in 16..=255u8 {
         let c_rgb = idx_to_rgb(candidate);
         let c_lum = PALETTE_LUMINANCE[candidate as usize];
-
-        // Skip candidates in the wrong direction (optimization)
-        if need_lighter && c_lum <= bg_lum {
-            continue;
-        }
-        if !need_lighter && c_lum >= bg_lum {
-            continue;
-        }
 
         let cr = if c_lum > bg_lum {
             (c_lum + 0.05) / (bg_lum + 0.05)
@@ -801,6 +800,36 @@ mod tests {
             fixed,
             MIN_CONTRAST_RATIO,
             cr
+        );
+    }
+
+    /// A mid-tone background is unrepairable by a lighter-only scan.
+    ///
+    /// The candidate search skips everything on the far side of 0.5 luminance —
+    /// "dark background means light text" — which is right at the ends of the
+    /// range but exactly wrong in the middle. At luminance ~0.42 nothing
+    /// *lighter* clears 3:1 (white tops out at 1.93:1) while black clears 8:1,
+    /// so the scan reports that nothing qualifies and hands back the original,
+    /// unreadable foreground.
+    ///
+    /// This is reachable without any exotic setup: any 256-colour session whose
+    /// theme has a mid-grey surface lands here.
+    #[test]
+    fn test_find_readable_256_color_repairs_against_a_mid_tone_background() {
+        // #afafaf — luminance ~0.42, the band a lighter-only scan cannot help.
+        let bg_rgb = (175, 175, 175);
+        let white = 255; // idx_to_rgb(255) == (238, 238, 238), 1.93:1 on this bg
+
+        let fixed = find_readable_256_color(white, bg_rgb);
+        let cr = contrast_ratio(idx_to_rgb(fixed), bg_rgb);
+
+        assert!(
+            cr >= MIN_CONTRAST_RATIO,
+            "fg idx {} on a mid grey is {:.2}:1 and must be repaired to >= {:.1}:1 — the search \
+             has to consider darker candidates, not only lighter ones",
+            fixed,
+            cr,
+            MIN_CONTRAST_RATIO
         );
     }
 
