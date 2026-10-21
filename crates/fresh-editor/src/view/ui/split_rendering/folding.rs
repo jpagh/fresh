@@ -14,7 +14,6 @@ use crate::view::folding::FoldManager;
 use crate::view::margin::LineIndicator;
 use crate::view::ui::view_pipeline::ViewLine;
 use fresh_core::api::ViewTokenStyle;
-use ratatui::style::Color;
 use std::collections::{BTreeMap, HashSet};
 
 /// Fold indicator for a single line (closed vs. open).
@@ -230,7 +229,13 @@ pub(super) fn fold_indicators_for_viewport(
 
 /// Colour of the unsaved-change decoration: the gutter bar *and* its mark on
 /// the scrollbar track, so one change never shows up in two different colours.
-pub(crate) const UNSAVED_CHANGE_FG: Color = Color::Rgb(100, 149, 237); // Cornflower blue
+///
+/// A theme key, not an RGB. This was a hardcoded cornflower blue — a colour that
+/// belongs to no palette, and the only mark in the gutter that ignored the theme
+/// entirely. `file_status_modified_fg` is the semantic match: a line that
+/// differs from the saved file *is* a modification, and `terminal.json` maps that
+/// key to the palette's own `Yellow`.
+pub(crate) const UNSAVED_CHANGE_FG: &str = "ui.file_status_modified_fg";
 
 /// Priority of the unsaved-change decoration on both surfaces. Below the git
 /// gutter's 10, so a committed-vs-HEAD hunk wins a cell they both want.
@@ -253,7 +258,11 @@ pub(super) fn diff_indicators_for_viewport(
     }
 
     let mut indicators = BTreeMap::new();
-    let indicator = LineIndicator::new("│", UNSAVED_CHANGE_FG, UNSAVED_CHANGE_PRIORITY);
+    // Heavy vertical (U+2503), matching the git-gutter mark in
+    // `plugins/git_gutter.ts`: the light `│` (U+2502) fills the same one-cell
+    // column but its stroke is a single pixel and disappears beside the line
+    // numbers.
+    let indicator = LineIndicator::new_keyed("┃", UNSAVED_CHANGE_FG, UNSAVED_CHANGE_PRIORITY);
 
     let bytes = state.buffer.slice_bytes(viewport_start..viewport_end);
     if bytes.is_empty() {

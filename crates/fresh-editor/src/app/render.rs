@@ -1214,9 +1214,16 @@ impl Editor {
         // Dead last, so the layers painted above — dock, full-screen modals,
         // animations — go through the fallback too instead of emitting
         // truecolor SGR on a terminal that cannot render it.
-        crate::view::color_support::convert_buffer_colors(
+        //
+        // A declared terminal palette rides along. It is what makes the
+        // `terminal` theme's named colours and `Reset` backgrounds answerable,
+        // so an unreadable pair can be repaired rather than shipped; without
+        // one this is the same call it always was.
+        let terminal_palette = self.config.editor.terminal_palette.to_palette();
+        crate::view::color_support::convert_buffer_colors_with_palette(
             frame.buffer_mut(),
             self.color_capability,
+            terminal_palette.as_ref(),
         );
 
         // **What this frame's settle decided reaches the editor with this

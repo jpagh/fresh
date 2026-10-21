@@ -1279,7 +1279,7 @@ fn test_large_file_gutter_indicators_byte_offset_mode() {
     );
 
     // ── Step 2: No indicators before editing ──
-    let indicators_before = count_gutter_indicators(&screen, "│");
+    let indicators_before = count_gutter_indicators(&screen, "┃");
     assert_eq!(
         indicators_before, 0,
         "No indicators before any edits.\nScreen:\n{}",
@@ -1313,8 +1313,8 @@ fn test_large_file_gutter_indicators_byte_offset_mode() {
 
     // ── Step 4: Verify indicators appear without line scan ──
     let screen = harness.screen_to_string();
-    let indicators = count_gutter_indicators(&screen, "│");
-    let indicator_lines = get_indicator_lines(&screen, "│");
+    let indicators = count_gutter_indicators(&screen, "┃");
+    let indicator_lines = get_indicator_lines(&screen, "┃");
     println!(
         "=== Byte-offset mode indicators ===\nCount: {}\nLines: {:?}\nScreen:\n{}",
         indicators, indicator_lines, screen
@@ -1512,11 +1512,11 @@ fn test_large_file_gutter_indicators_after_line_scan() {
 
     // Capture pre-scan indicator state
     let screen_before_scan = harness.screen_to_string();
-    let indicators_before = count_gutter_indicators(&screen_before_scan, "│");
+    let indicators_before = count_gutter_indicators(&screen_before_scan, "┃");
     println!(
         "=== Before line scan ===\nIndicator count: {}\nIndicator lines: {:?}\nScreen:\n{}",
         indicators_before,
-        get_indicator_lines(&screen_before_scan, "│"),
+        get_indicator_lines(&screen_before_scan, "┃"),
         screen_before_scan
     );
 
@@ -1580,13 +1580,13 @@ fn test_large_file_gutter_indicators_after_line_scan() {
 
     // Wait for plugin to process and show gutter indicators
     harness
-        .wait_until(|h| count_gutter_indicators(&h.screen_to_string(), "│") >= 3)
+        .wait_until(|h| count_gutter_indicators(&h.screen_to_string(), "┃") >= 3)
         .unwrap();
 
     // Capture post-scan indicator state
     let screen_after_scan = harness.screen_to_string();
-    let indicators_after = count_gutter_indicators(&screen_after_scan, "│");
-    let indicator_lines_after = get_indicator_lines(&screen_after_scan, "│");
+    let indicators_after = count_gutter_indicators(&screen_after_scan, "┃");
+    let indicator_lines_after = get_indicator_lines(&screen_after_scan, "┃");
     println!(
         "=== After line scan ===\nIndicator count: {}\nIndicator lines: {:?}\nScreen:\n{}",
         indicators_after, indicator_lines_after, screen_after_scan
@@ -1819,11 +1819,11 @@ fn test_large_file_gutter_indicators_viewport_filtering() {
     }
 
     let screen_eof = harness.screen_to_string();
-    let eof_indicators = count_gutter_indicators(&screen_eof, "│");
+    let eof_indicators = count_gutter_indicators(&screen_eof, "┃");
     println!(
         "=== After editing near EOF ===\nIndicator count: {}\nIndicator lines: {:?}\nScreen:\n{}",
         eof_indicators,
-        get_indicator_lines(&screen_eof, "│"),
+        get_indicator_lines(&screen_eof, "┃"),
         screen_eof
     );
 
@@ -1849,8 +1849,8 @@ fn test_large_file_gutter_indicators_viewport_filtering() {
     eprintln!("[test] Step 4: settled at EOF");
 
     let screen_back_eof = harness.screen_to_string();
-    let back_eof_indicators = count_gutter_indicators(&screen_back_eof, "│");
-    let back_eof_indicator_lines = get_indicator_lines(&screen_back_eof, "│");
+    let back_eof_indicators = count_gutter_indicators(&screen_back_eof, "┃");
+    let back_eof_indicator_lines = get_indicator_lines(&screen_back_eof, "┃");
     println!(
         "=== Back at EOF ===\nIndicator count: {}\nIndicator lines: {:?}\nScreen:\n{}",
         back_eof_indicators, back_eof_indicator_lines, screen_back_eof

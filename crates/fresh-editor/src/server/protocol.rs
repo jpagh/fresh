@@ -42,7 +42,7 @@ pub struct ClientHello {
     /// Initial terminal size
     pub term_size: TermSize,
     /// Environment variables relevant for rendering
-    /// Keys: TERM, COLORTERM, LANG, LC_ALL
+    /// Keys: TERM, COLORTERM, LANG, LC_ALL, TMUX
     pub env: HashMap<String, Option<String>>,
     /// Per-workspace capability token (from `$FRESH_CMD_TOKEN`), presented so
     /// the server can authorize `RunScript` against this workspace's grant.
@@ -58,7 +58,7 @@ impl ClientHello {
         let mut env = HashMap::new();
 
         // Collect terminal-relevant environment variables
-        for key in &["TERM", "COLORTERM", "LANG", "LC_ALL"] {
+        for key in &["TERM", "COLORTERM", "LANG", "LC_ALL", "TMUX"] {
             env.insert(key.to_string(), std::env::var(key).ok());
         }
 
@@ -87,6 +87,19 @@ impl ClientHello {
             .and_then(|v| v.as_deref())
             .map(|v| v == "truecolor" || v == "24bit")
             .unwrap_or(false)
+    }
+
+    /// Whether this client's terminal is tmux.
+    ///
+    /// The daemon needs to know because tmux is the one terminal it sets up
+    /// that ignores the kitty keyboard-protocol push and only honours xterm's
+    /// `modifyOtherKeys` — see
+    /// `services::terminal_modes::modify_other_keys_request`.
+    pub fn in_tmux(&self) -> bool {
+        self.env
+            .get("TMUX")
+            .and_then(|v| v.as_deref())
+            .is_some_and(|v| !v.is_empty())
     }
 }
 
@@ -248,6 +261,35 @@ mod tests {
         let parsed: ClientHello = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.term_size.cols, 120);
         assert_eq!(parsed.term_size.rows, 40);
+    }
+
+    /// The daemon composes each client's terminal setup from what the client's
+    /// handshake says about its terminal, so `TMUX` has to survive the trip —
+    /// it is the only signal that this client needs the `modifyOtherKeys`
+    /// fallback rather than the kitty push.
+    #[test]
+    fn test_client_hello_reports_tmux_from_env() {
+        fn with_tmux(value: Option<&str>) -> ClientHello {
+            let mut env = HashMap::new();
+            env.insert("TERM".to_string(), Some("xterm-ghostty".to_string()));
+            env.insert("TMUX".to_string(), value.map(str::to_string));
+            ClientHello {
+                protocol_version: PROTOCOL_VERSION,
+                client_version: "test".to_string(),
+                term_size: TermSize::new(80, 24),
+                env,
+                cmd_token: None,
+            }
+        }
+
+        assert!(with_tmux(Some("/private/tmp/tmux-501/default,1,0")).in_tmux());
+        assert!(!with_tmux(None).in_tmux());
+        // Set but empty is what `env TMUX= fresh` produces: not in tmux.
+        assert!(!with_tmux(Some("")).in_tmux());
+        // An older client sends no `TMUX` key at all.
+        let mut older = ClientHello::new(TermSize::new(80, 24));
+        older.env.remove("TMUX");
+        assert!(!older.in_tmux());
     }
 
     #[test]
