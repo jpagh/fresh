@@ -4860,12 +4860,18 @@ interface EditorAPI {
 	setBufferDiffGutter(bufferId: number, enabled: boolean): boolean;
 	/**
 	* Set a line indicator in the gutter
+	* 
+	* `color` is an `[r, g, b]` array or a theme key such as
+	* `"ui.file_status_added_fg"`. Prefer the key: it is re-resolved at paint
+	* time, so the mark follows the user's palette — including a terminal
+	* theme that changes with the system at dusk — where an RGB array freezes
+	* one palette's answer forever.
 	*/
-	setLineIndicator(bufferId: number, line: number, namespace: string, symbol: string, r: number, g: number, b: number, priority: number): boolean;
+	setLineIndicator(bufferId: number, line: number, namespace: string, symbol: string, color: [number, number, number] | string, priority: number): boolean;
 	/**
 	* Batch set line indicators in the gutter
 	*/
-	setLineIndicators(bufferId: number, lines: number[], namespace: string, symbol: string, r: number, g: number, b: number, priority: number): boolean;
+	setLineIndicators(bufferId: number, lines: number[], namespace: string, symbol: string, color: [number, number, number] | string, priority: number): boolean;
 	/**
 	* Clear line indicators in a namespace
 	*/

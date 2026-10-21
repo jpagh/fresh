@@ -53,13 +53,18 @@ const THEME = {
   removedFg: "editor.diff_remove_collision_fg",
 };
 
-// `setLineIndicator` only accepts RGB triples (not theme keys), so the
-// gutter glyphs use a fixed palette. Keep them muted so they read on
-// both light and dark themes; the visual signal is the glyph shape.
+// Theme keys, not RGB.
+//
+// `setLineIndicator` only takes RGB triples... except it does not any more: it
+// takes a colour spec, so these can name the theme instead of shipping a fixed
+// palette. Keep them the same keys the git gutter uses, so "added" means one
+// colour everywhere and follows whatever palette the user is running. Shares
+// `ui.file_status_modified_fg` with the unsaved-change mark in the gutter, which
+// is the same idea: a line that differs from the saved file.
 const GUTTER_COLORS = {
-  added: [80, 200, 120] as [number, number, number],
-  modified: [220, 160, 90] as [number, number, number],
-  removed: [220, 90, 90] as [number, number, number],
+  added: "ui.file_status_added_fg",
+  modified: "ui.file_status_modified_fg",
+  removed: "ui.file_status_deleted_fg",
 };
 const SYMBOLS = {
   added: "+",
@@ -800,13 +805,13 @@ function renderHunks(state: BufferDiffState, newLines: string[], detail: DetailL
   if (addedLines.length > 0) {
     editor.setLineIndicators(
       bid, addedLines, NS_GUTTER, SYMBOLS.added,
-      GUTTER_COLORS.added[0], GUTTER_COLORS.added[1], GUTTER_COLORS.added[2], PRIORITY,
+      GUTTER_COLORS.added, PRIORITY,
     );
   }
   if (modifiedLines.length > 0) {
     editor.setLineIndicators(
       bid, modifiedLines, NS_GUTTER, SYMBOLS.modified,
-      GUTTER_COLORS.modified[0], GUTTER_COLORS.modified[1], GUTTER_COLORS.modified[2], PRIORITY,
+      GUTTER_COLORS.modified, PRIORITY,
     );
   }
 
@@ -835,7 +840,10 @@ function renderHunks(state: BufferDiffState, newLines: string[], detail: DetailL
     const start = lineStarts[h.newStart];
     // Byte offsets, not line numbers: exact at any file size, and the editor
     // anchors them so marks ride subsequent edits until the next recompute.
-    const marker: { position: number; end?: number; color: [number, number, number]; priority: number } = {
+    // `OverlayColorSpec` rather than `[number, number, number]`: the marker
+    // colour is a theme key now, and the API's own type is what the command
+    // accepts, so an annotation that narrows it back would drift again.
+    const marker: { position: number; end?: number; color: OverlayColorSpec; priority: number } = {
       position: start,
       color,
       priority: PRIORITY,

@@ -6,7 +6,8 @@
 use crate::config::{
     ClipboardConfig, CursorStyle, FileBrowserConfig, FileExplorerConfig, FormatterConfig,
     IndentationGuideMode, Keybinding, KeybindingMapName, KeymapConfig, LanguageConfig,
-    LineEndingOption, OnSaveAction, PluginConfig, TerminalConfig, ThemeName, WarningsConfig,
+    LineEndingOption, OnSaveAction, PluginConfig, TerminalConfig, TerminalPaletteConfig, ThemeName,
+    WarningsConfig,
 };
 use crate::types::LspLanguageConfig;
 use serde::{Deserialize, Serialize};
@@ -227,6 +228,9 @@ pub struct PartialEditorConfig {
     pub show_tilde: Option<bool>,
     pub nerd_font_icons: Option<bool>,
     pub use_terminal_bg: Option<bool>,
+    /// Whole-value merge: a layer that names the palette replaces a lower
+    /// layer's declaration rather than patching individual slots.
+    pub terminal_palette: Option<TerminalPaletteConfig>,
     pub set_window_title: Option<bool>,
     pub terminal_auto_title: Option<bool>,
     pub rulers: Option<Vec<usize>>,
@@ -358,6 +362,7 @@ impl Merge for PartialEditorConfig {
         self.show_tilde.merge_from(&other.show_tilde);
         self.nerd_font_icons.merge_from(&other.nerd_font_icons);
         self.use_terminal_bg.merge_from(&other.use_terminal_bg);
+        self.terminal_palette.merge_from(&other.terminal_palette);
         self.set_window_title.merge_from(&other.set_window_title);
         self.terminal_auto_title
             .merge_from(&other.terminal_auto_title);
@@ -744,6 +749,7 @@ impl From<&crate::config::EditorConfig> for PartialEditorConfig {
             show_tilde: Some(cfg.show_tilde),
             nerd_font_icons: Some(cfg.nerd_font_icons),
             use_terminal_bg: Some(cfg.use_terminal_bg),
+            terminal_palette: Some(cfg.terminal_palette.clone()),
             set_window_title: Some(cfg.set_window_title),
             terminal_auto_title: Some(cfg.terminal_auto_title),
             rulers: Some(cfg.rulers.clone()),
@@ -932,6 +938,7 @@ impl PartialEditorConfig {
             show_tilde: self.show_tilde.unwrap_or(defaults.show_tilde),
             nerd_font_icons: self.nerd_font_icons.unwrap_or(defaults.nerd_font_icons),
             use_terminal_bg: self.use_terminal_bg.unwrap_or(defaults.use_terminal_bg),
+            terminal_palette: self.terminal_palette.clone().unwrap_or_default(),
             set_window_title: self.set_window_title.unwrap_or(defaults.set_window_title),
             terminal_auto_title: self
                 .terminal_auto_title
