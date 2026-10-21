@@ -9,6 +9,8 @@ use ratatui::layout::{Position, Size};
 use ratatui::style::{Color, Modifier};
 use std::io::{self, Write};
 
+use crate::services::terminal_modes::KeyboardConfig;
+
 /// A backend that captures output to a buffer
 pub struct CaptureBackend {
     /// Buffer holding the captured ANSI output
@@ -363,17 +365,44 @@ impl Backend for CaptureBackend {
 /// Uses shared constants from `terminal_modes::sequences` to stay in sync
 /// with the direct-mode terminal setup in `TerminalModes::enable()`.
 ///
+/// `keyboard` and `in_tmux` mirror what a direct launch asks for: the kitty
+/// keyboard-protocol push built from the user's `editor.keyboard_*` settings,
+/// plus — for tmux, which ignores that push — xterm's `modifyOtherKeys` mode 2.
+/// `in_tmux` comes from the connecting client's own environment, since the
+/// daemon may be serving panes on different terminals.
+///
 /// When `mouse_hover_enabled` is false on Windows, mode 1003 (all motion) is
 /// omitted and only mode 1002 (cell motion) is enabled, reducing event volume
 /// and avoiding input corruption. On non-Windows platforms the parameter is
 /// ignored and full mouse tracking is always enabled.
-pub fn terminal_setup_sequences(mouse_hover_enabled: bool) -> Vec<u8> {
-    use crate::services::terminal_modes::sequences as seq;
+pub fn terminal_setup_sequences(
+    mouse_hover_enabled: bool,
+    keyboard: &KeyboardConfig,
+    in_tmux: bool,
+) -> Vec<u8> {
+    use crate::services::terminal_modes::{keyboard_enhancement_push, sequences as seq};
 
     let mut buf = Vec::new();
 
     // Enter alternate screen
     buf.extend_from_slice(seq::ENTER_ALTERNATE_SCREEN);
+
+    // Ask for unambiguous modified keys, exactly as a direct launch does: the
+    // kitty push, plus — where tmux would ignore it — the xterm
+    // `modifyOtherKeys` request tmux honours instead. Both ride on the same
+    // gate, so a config with every `editor.keyboard_*` flag off asks for
+    // neither, as in `TerminalModes::enable`. Order matters: the kitty protocol
+    // keeps a separate keyboard mode stack per screen, and the pop in
+    // `terminal_teardown_sequences` has to come off the stack this push went on.
+    // Terminals that do not implement the push ignore it, so there is no probe.
+    if let Some(push) = keyboard_enhancement_push(keyboard) {
+        buf.extend_from_slice(&push);
+        // tmux drops the shift from `Ctrl+Shift+<letter>` without this.
+        if in_tmux {
+            buf.extend_from_slice(seq::PUSH_MODIFY_OTHER_KEYS_MODE_2);
+        }
+    }
+
     // Enable mouse tracking (SGR format)
     buf.extend_from_slice(seq::ENABLE_MOUSE_CLICK);
     buf.extend_from_slice(seq::ENABLE_MOUSE_DRAG);
@@ -422,6 +451,13 @@ pub fn terminal_teardown_sequences() -> Vec<u8> {
     buf.extend_from_slice(seq::DISABLE_MOUSE_CLICK);
     // Reset attributes
     buf.extend_from_slice(seq::RESET_ATTRIBUTES);
+    // Undo the key-mode requests `terminal_setup_sequences` made, mirroring the
+    // order in `TerminalModes::undo`: `modifyOtherKeys` first, then the kitty
+    // flags (which come off before the alternate screen they were pushed on).
+    // Both are no-ops on a terminal that never had them — the same assumption
+    // `emergency_cleanup` makes — so no per-client bookkeeping is needed.
+    buf.extend_from_slice(seq::RESET_MODIFY_OTHER_KEYS);
+    buf.extend_from_slice(seq::POP_KEYBOARD_ENHANCEMENT_FLAGS);
     // Leave alternate screen
     buf.extend_from_slice(seq::LEAVE_ALTERNATE_SCREEN);
 
@@ -514,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_setup_sequences_enable_features() {
-        let setup = terminal_setup_sequences(true);
+        let setup = terminal_setup_sequences(true, &KeyboardConfig::default(), false);
         let setup_str = String::from_utf8_lossy(&setup);
 
         // Alternate screen
@@ -523,6 +559,46 @@ mod tests {
         assert!(setup_str.contains("\x1b[?1000h"));
         // Focus events
         assert!(setup_str.contains("\x1b[?1004h"));
+        // Keyboard enhancement flags, as on a direct launch
+        assert!(setup_str.contains("\x1b[>5u"));
+        // ...but not the tmux fallback, which this client does not need
+        assert!(!setup_str.contains("\x1b[>4;2m"));
+    }
+
+    /// A client that reports `TMUX` gets the `modifyOtherKeys` fallback as well,
+    /// because tmux ignores the kitty push and encodes modified keys from a key
+    /// table that has no `Ctrl+Shift+<letter>` in it.
+    #[test]
+    fn test_setup_sequences_ask_for_modify_other_keys_under_tmux() {
+        let setup = terminal_setup_sequences(true, &KeyboardConfig::default(), true);
+        let setup_str = String::from_utf8_lossy(&setup);
+
+        assert!(setup_str.contains("\x1b[>5u"));
+        assert!(setup_str.contains("\x1b[>4;2m"));
+        // After entering the alternate screen and after the kitty push.
+        let alt = setup_str.find("\x1b[?1049h").unwrap();
+        let kitty = setup_str.find("\x1b[>5u").unwrap();
+        let mode2 = setup_str.find("\x1b[>4;2m").unwrap();
+        assert!(alt < kitty && kitty < mode2);
+    }
+
+    /// A config with every `editor.keyboard_*` flag off asks for nothing, in
+    /// either path.
+    #[test]
+    fn test_setup_sequences_omit_keyboard_requests_when_disabled() {
+        let all_off = KeyboardConfig {
+            disambiguate_escape_codes: false,
+            report_event_types: false,
+            report_alternate_keys: false,
+            report_all_keys_as_escape_codes: false,
+        };
+
+        for in_tmux in [false, true] {
+            let setup = terminal_setup_sequences(true, &all_off, in_tmux);
+            let setup_str = String::from_utf8_lossy(&setup);
+            assert!(!setup_str.contains("\x1b[>5u"), "in_tmux={in_tmux}");
+            assert!(!setup_str.contains("\x1b[>4;2m"), "in_tmux={in_tmux}");
+        }
     }
 
     #[test]
@@ -534,6 +610,13 @@ mod tests {
         assert!(teardown_str.contains("\x1b[?1049l"));
         // Reset attributes
         assert!(teardown_str.contains("\x1b[0m"));
+        // Undo the key-mode requests, before leaving the alternate screen.
+        assert!(teardown_str.contains("\x1b[>4;0m"));
+        assert!(teardown_str.contains("\x1b[<1u"));
+        let mode2 = teardown_str.find("\x1b[>4;0m").unwrap();
+        let pop = teardown_str.find("\x1b[<1u").unwrap();
+        let leave = teardown_str.find("\x1b[?1049l").unwrap();
+        assert!(mode2 < pop && pop < leave);
     }
 
     /// Issue #2723: a resize inside a daemon session left blank cells filled
