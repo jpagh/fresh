@@ -115,15 +115,12 @@ fn unsaved_change_marks(
     }
     let ranges = coalesce_within_a_cell(diff.byte_ranges, state.buffer.len(), track_height);
 
-    let Color::Rgb(r, g, b) = UNSAVED_CHANGE_FG else {
-        // The constant is an RGB literal; a non-RGB variant would have no
-        // `OverlayColorSpec` spelling and is not reachable.
-        return None;
-    };
-
+    // The same theme key the gutter bar uses, so the two surfaces cannot drift
+    // apart and neither hardcodes a colour. `OverlayColorSpec` is what lets a
+    // marker carry a key at all — it resolves at paint time.
     Some(scrollbar_marker::CoreMarks {
         ranges,
-        color: fresh_core::api::OverlayColorSpec::Rgb(r, g, b),
+        color: fresh_core::api::OverlayColorSpec::ThemeKey(UNSAVED_CHANGE_FG.to_owned()),
         priority: UNSAVED_CHANGE_PRIORITY,
     })
 }

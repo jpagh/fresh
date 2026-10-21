@@ -2145,7 +2145,7 @@ impl Editor {
         line: usize,
         namespace: String,
         symbol: String,
-        color: (u8, u8, u8),
+        color: fresh_core::api::OverlayColorSpec,
         priority: i32,
     ) {
         if let Some(state) = self
@@ -2156,11 +2156,7 @@ impl Editor {
         {
             // Convert line number to byte offset for marker-based tracking
             let byte_offset = state.buffer.line_start_offset(line).unwrap_or(0);
-            let indicator = crate::view::margin::LineIndicator::new(
-                symbol,
-                ratatui::style::Color::Rgb(color.0, color.1, color.2),
-                priority,
-            );
+            let indicator = crate::view::margin::LineIndicator::from_spec(symbol, color, priority);
             state
                 .margins
                 .set_line_indicator(byte_offset, namespace, indicator);
@@ -2174,7 +2170,7 @@ impl Editor {
         lines: Vec<usize>,
         namespace: String,
         symbol: String,
-        color: (u8, u8, u8),
+        color: fresh_core::api::OverlayColorSpec,
         priority: i32,
     ) {
         if let Some(state) = self
@@ -2183,11 +2179,7 @@ impl Editor {
             .expect("active window present")
             .buffer_state_mut(buffer_id)
         {
-            let indicator = crate::view::margin::LineIndicator::new(
-                symbol,
-                ratatui::style::Color::Rgb(color.0, color.1, color.2),
-                priority,
-            );
+            let indicator = crate::view::margin::LineIndicator::from_spec(symbol, color, priority);
             for line in lines {
                 let byte_offset = state.buffer.line_start_offset(line).unwrap_or(0);
                 state

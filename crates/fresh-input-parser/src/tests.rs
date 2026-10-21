@@ -556,6 +556,30 @@ fn modify_other_keys_mode_2() {
     );
 }
 
+/// What tmux sends once the editor has asked for xterm `modifyOtherKeys` mode
+/// 2, which is the only extended-key request tmux honours (it ignores the kitty
+/// keyboard-protocol push). Both wire forms must decode, because which one tmux
+/// uses depends on the user's `extended-keys-format`.
+///
+/// This is the `Ctrl+Shift+<letter>` case specifically: without mode 2 tmux
+/// drops the shift and sends `0x0B`, so a binding on `Ctrl+Shift+K` is
+/// unreachable under tmux and every test below would still pass.
+#[test]
+fn tmux_modify_other_keys_mode_2_preserves_ctrl_shift() {
+    let ctrl_shift_k = vec![(
+        KeyCode::Char('k'),
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    )];
+
+    // extended-keys-format csi-u (the default on modern tmux when set)
+    let mut csi_u = InputParser::new();
+    assert_eq!(keys(&csi_u.parse(b"\x1b[107;6u")), ctrl_shift_k);
+
+    // extended-keys-format xterm
+    let mut xterm = InputParser::new();
+    assert_eq!(keys(&xterm.parse(b"\x1b[27;6;107~")), ctrl_shift_k);
+}
+
 #[test]
 fn mixed_input_preserves_order() {
     let mut p = InputParser::new();
