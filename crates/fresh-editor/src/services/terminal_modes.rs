@@ -4,7 +4,8 @@
 //! - Raw mode
 //! - Alternate screen
 //! - Mouse capture
-//! - Keyboard enhancement flags
+//! - Keyboard enhancement flags, plus the xterm `modifyOtherKeys` fallback
+//!   that multiplexers need (see `modify_other_keys_request`)
 //! - Bracketed paste
 //!
 //! It provides a `TerminalModes` struct that tracks which modes were enabled
@@ -60,6 +61,16 @@ pub mod sequences {
 
     // Attributes
     pub const RESET_ATTRIBUTES: &[u8] = b"\x1b[0m";
+
+    // xterm `modifyOtherKeys`, sent only where the kitty push is ignored —
+    // see `modify_other_keys_request`.
+    pub const PUSH_MODIFY_OTHER_KEYS_MODE_2: &[u8] = b"\x1b[>4;2m";
+    pub const RESET_MODIFY_OTHER_KEYS: &[u8] = b"\x1b[>4;0m";
+
+    // Kitty keyboard protocol. The push varies with the flags the config asks
+    // for, so it is built by `keyboard_enhancement_push`; the pop is fixed.
+    // Mirrors the bytes crossterm's `PopKeyboardEnhancementFlags` sends.
+    pub const POP_KEYBOARD_ENHANCEMENT_FLAGS: &[u8] = b"\x1b[<1u";
 }
 
 /// Configuration for keyboard enhancement flags.
@@ -112,6 +123,65 @@ impl KeyboardConfig {
             || self.report_alternate_keys
             || self.report_all_keys_as_escape_codes
     }
+
+    /// The flags the config's `editor.keyboard_*` settings ask for.
+    ///
+    /// Both terminal paths build their request from here: `TerminalModes::enable`
+    /// for a direct launch, and the daemon for the clients it sets up.
+    pub fn from_config(config: &crate::config::Config) -> Self {
+        Self {
+            disambiguate_escape_codes: config.editor.keyboard_disambiguate_escape_codes,
+            report_event_types: config.editor.keyboard_report_event_types,
+            report_alternate_keys: config.editor.keyboard_report_alternate_keys,
+            report_all_keys_as_escape_codes: config.editor.keyboard_report_all_keys_as_escape_codes,
+        }
+    }
+}
+
+/// The xterm `modifyOtherKeys` request to send alongside the kitty push, if
+/// this terminal needs one.
+///
+/// tmux ignores the kitty keyboard-protocol push: `CSI > … u` from an
+/// application leaves the pane in tmux's legacy key mode whatever flags it
+/// asks for, and tmux then encodes modified keys from its own key table. That
+/// table has no entry for `Ctrl+Shift+<letter>`, so the shift is gone before
+/// the editor ever sees it — `Ctrl+Shift+K` arrives as `0x0B`, byte-identical
+/// to `Ctrl+K`. The whole family of `Ctrl+Shift` bindings is unreachable there,
+/// which is why the macOS keymap avoids them.
+///
+/// `modifyOtherKeys` mode 2 is the request tmux does honour. With it on, tmux
+/// reports every modified key unambiguously while leaving plain text, `Enter`
+/// and `Esc` alone: `Ctrl+Shift+K` becomes `CSI 107;6u`, or `CSI 27;6;107~`
+/// under `extended-keys-format xterm`. The input parser accepts both.
+///
+/// Detection is by environment rather than by probe: tmux always exports
+/// `TMUX`, and only multiplexers need this (a real kitty-protocol terminal
+/// honours the push directly), so a probe would buy nothing and would stall
+/// startup on the terminals that never answer one — see the note in
+/// [`TerminalModes::enable`].
+///
+/// Anything that pushes the keyboard enhancement flags must ask for this too,
+/// or it will see unshifted keys where the editor sees shifted ones.
+pub fn modify_other_keys_request() -> Option<&'static [u8]> {
+    modify_other_keys_request_for(std::env::var("TMUX").ok().as_deref())
+}
+
+/// Pure half of [`modify_other_keys_request`], so the decision is testable.
+fn modify_other_keys_request_for(tmux: Option<&str>) -> Option<&'static [u8]> {
+    tmux.map(|_| sequences::PUSH_MODIFY_OTHER_KEYS_MODE_2)
+}
+
+/// The kitty keyboard-protocol push for `keyboard`, as raw bytes, or `None`
+/// when the config asks for no flags at all.
+///
+/// The direct path sends this request through crossterm's
+/// `PushKeyboardEnhancementFlags`; the client/server path composes its clients'
+/// terminal setup as bytes, since the daemon writes them down a socket. This
+/// mirrors that command's wire format so both paths ask for the same thing.
+pub fn keyboard_enhancement_push(keyboard: &KeyboardConfig) -> Option<Vec<u8>> {
+    keyboard
+        .any_enabled()
+        .then(|| format!("\x1b[>{}u", keyboard.to_flags().bits()).into_bytes())
 }
 
 /// Tracks which terminal modes have been enabled and provides cleanup.
@@ -124,6 +194,7 @@ pub struct TerminalModes {
     alternate_screen: bool,
     mouse_capture: bool,
     keyboard_enhancement: bool,
+    modify_other_keys: bool,
     bracketed_paste: bool,
 }
 
@@ -200,6 +271,16 @@ impl TerminalModes {
                     flags
                 );
             }
+
+            // The push above is silently ignored under tmux, so ask for the
+            // one request it does honour. See `modify_other_keys_request`.
+            if let Some(request) = modify_other_keys_request() {
+                let mut out = stdout();
+                if out.write_all(request).is_ok() && out.flush().is_ok() {
+                    modes.modify_other_keys = true;
+                    tracing::debug!("Requested xterm modifyOtherKeys mode 2 (multiplexer)");
+                }
+            }
         } else {
             tracing::debug!("Keyboard enhancement disabled by config");
         }
@@ -268,6 +349,14 @@ impl TerminalModes {
         // never sets one, so there is nothing of ours to put back and a colour
         // the user's shell set is theirs to keep.
         let _ = stdout().execute(SetCursorStyle::DefaultUserShape);
+
+        // Undo the multiplexer fallback, so the pane is back in its original
+        // key mode by the time the shell resumes.
+        if self.modify_other_keys {
+            let _ = stdout().write_all(sequences::RESET_MODIFY_OTHER_KEYS);
+            self.modify_other_keys = false;
+            tracing::debug!("Reset xterm modifyOtherKeys");
+        }
 
         // Pop keyboard enhancement flags
         if self.keyboard_enhancement {
@@ -351,6 +440,10 @@ pub fn emergency_cleanup() {
     // Reset cursor style to default (never the colour — see `restore`).
     let _ = stdout().execute(SetCursorStyle::DefaultUserShape);
 
+    // Reset xterm modifyOtherKeys. Paired with `PushKeyboardEnhancementFlags`
+    // below, which is likewise popped unconditionally.
+    let _ = stdout().write_all(sequences::RESET_MODIFY_OTHER_KEYS);
+
     // Pop keyboard enhancement flags
     let _ = stdout().execute(PopKeyboardEnhancementFlags);
 
@@ -362,4 +455,43 @@ pub fn emergency_cleanup() {
 
     // Flush stdout
     let _ = stdout().flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modify_other_keys_request_is_xterm_mode_2_only_under_tmux() {
+        // Wire format is pinned on purpose: tmux reads exactly this sequence
+        // off the pane's output stream to switch key mode, so a typo here
+        // would fail silently rather than loudly.
+        assert_eq!(
+            modify_other_keys_request_for(Some("/private/tmp/tmux-501/default,12345,0")),
+            Some(&b"\x1b[>4;2m"[..])
+        );
+        assert_eq!(modify_other_keys_request_for(None), None);
+        assert_eq!(sequences::RESET_MODIFY_OTHER_KEYS, b"\x1b[>4;0m");
+    }
+
+    #[test]
+    fn keyboard_enhancement_push_matches_the_bytes_crossterm_would_send() {
+        // Defaults are disambiguate + alternate keys, i.e. `CSI > 5 u` — the
+        // request a direct launch puts on the wire.
+        let push = keyboard_enhancement_push(&KeyboardConfig::default()).expect("defaults are on");
+        assert_eq!(push, b"\x1b[>5u");
+        assert_eq!(sequences::POP_KEYBOARD_ENHANCEMENT_FLAGS, b"\x1b[<1u");
+    }
+
+    #[test]
+    fn keyboard_enhancement_push_is_skipped_when_every_flag_is_off() {
+        let all_off = KeyboardConfig {
+            disambiguate_escape_codes: false,
+            report_event_types: false,
+            report_alternate_keys: false,
+            report_all_keys_as_escape_codes: false,
+        };
+        assert!(!all_off.any_enabled());
+        assert_eq!(keyboard_enhancement_push(&all_off), None);
+    }
 }

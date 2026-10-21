@@ -29,6 +29,7 @@ use crate::server::ipc::{ServerConnection, ServerListener, SocketPaths, StreamWr
 use crate::server::protocol::{
     ClientControl, ServerControl, ServerHello, TermSize, VersionMismatch, PROTOCOL_VERSION,
 };
+use crate::services::terminal_modes::KeyboardConfig;
 use crate::view::color_support::ColorCapability;
 
 /// Configuration for the editor server
@@ -1043,7 +1044,11 @@ impl EditorServer {
 
         // Send terminal setup sequences
         let mouse_hover_enabled = self.config.editor_config.editor.mouse_hover_enabled;
-        let setup = terminal_setup_sequences(mouse_hover_enabled);
+        // The key-mode requests depend on the connecting client's terminal, not
+        // the daemon's: a pane under tmux needs the `modifyOtherKeys` fallback
+        // because tmux ignores the kitty push (see `ClientHello::in_tmux`).
+        let keyboard = KeyboardConfig::from_config(&self.config.editor_config);
+        let setup = terminal_setup_sequences(mouse_hover_enabled, &keyboard, hello.in_tmux());
         conn.write_data(&setup)?;
 
         // Send cursor style (from editor if running, otherwise from config)

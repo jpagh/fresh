@@ -1991,12 +1991,7 @@ fn initialize_app(args: &Args) -> AnyhowResult<SetupState> {
 
     // Enable terminal modes (raw mode, alternate screen, mouse capture, etc.)
     // This checks support for each mode and tracks what was enabled
-    let keyboard_config = KeyboardConfig {
-        disambiguate_escape_codes: config.editor.keyboard_disambiguate_escape_codes,
-        report_event_types: config.editor.keyboard_report_event_types,
-        report_alternate_keys: config.editor.keyboard_report_alternate_keys,
-        report_all_keys_as_escape_codes: config.editor.keyboard_report_all_keys_as_escape_codes,
-    };
+    let keyboard_config = KeyboardConfig::from_config(&config);
     tracing::info!("Enabling terminal modes...");
     let terminal_modes = TerminalModes::enable(Some(&keyboard_config))?;
     tracing::info!("Terminal modes enabled");

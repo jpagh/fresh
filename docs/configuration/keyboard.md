@@ -218,6 +218,30 @@ The macOS keymap disables Alt+0-9 bindings because these key combinations are us
 
 If you find that certain Alt combinations insert characters instead of triggering editor commands, ensure your terminal's Option key is configured as Meta (see above).
 
+## tmux
+
+**What breaks.** tmux ignores the Kitty keyboard-protocol push that applications send at startup (`CSI > … u`). The pane stays in tmux's legacy key mode whatever flags were requested, and tmux then encodes modified keys from its own key table — which has no entry for **Ctrl+Shift+&lt;letter&gt;**. The shift is therefore dropped before it reaches Fresh: `Ctrl+Shift+K` arrives as `0x0B`, byte-identical to `Ctrl+K`. Every `Ctrl+Shift` binding is unreachable under tmux, which is why the macOS keymap avoids them.
+
+**What Fresh does.** When it starts under tmux (`$TMUX` is set) Fresh also requests xterm's `modifyOtherKeys` mode 2 — the request tmux does honour, and the only one in this area it implements. tmux then reports modified keys unambiguously: `Ctrl+Shift+K` becomes `CSI 107;6u`, or `CSI 27;6;107~` if you set `extended-keys-format xterm`. Plain text, `Enter` and `Esc` are unaffected, and Fresh resets the mode on exit.
+
+**What tmux needs.** tmux only requests extended keys from the outer terminal when it believes that terminal supports them, so say so — using the terminal name from `tmux display -p '#{client_termname}'`:
+
+```tmux
+set -g extended-keys on
+set -as terminal-features 'xterm-ghostty:extkeys'
+```
+
+These apply per client and are computed when a client attaches, so after changing them **detach and re-attach** (your prefix, then `d`, then `tmux attach`). `tmux refresh-client` is not enough. Check it took:
+
+```console
+$ tmux display -p '#{client_termfeatures}'
+bpaste,ccolour,clipboard,cstyle,extkeys,focus,RGB,title
+```
+
+`set -g extended-keys always` is not a substitute: it pins panes to mode 1, which still drops the shift for applications that only push the Kitty flags.
+
+The same holds for a pane attached to the Orchestrator's shared daemon: the client passes its terminal's `TMUX` to the daemon as part of the handshake, so each attached pane is set up for the terminal it is actually on, daemon-attached or direct.
+
 ## Key Names
 
 The `key` field of a binding takes one of the names below.

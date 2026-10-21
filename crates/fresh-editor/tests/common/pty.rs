@@ -73,6 +73,13 @@ pub fn spawn_on_pty(
     let (master, slave_path) = open_pty()?;
     resize(&master, cols, rows)?;
 
+    // A pty is not tmux, so the child must not inherit `TMUX` from a developer
+    // running the suite inside a tmux pane: the editor keys its xterm
+    // `modifyOtherKeys` request off that variable (see
+    // `services::terminal_modes::modify_other_keys_request`), which would make
+    // the terminal setup these tests observe depend on where `cargo test` ran.
+    command.env_remove("TMUX");
+
     let slave = File::options().read(true).write(true).open(&slave_path)?;
 
     match &stdin {
